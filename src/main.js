@@ -1,6 +1,6 @@
 // Entry Point: globaler State, Persistenz, Navigation, Theme, PWA, "Mehr"-Screen.
 import { registerSW } from 'virtual:pwa-register';
-import { ICO, escapeHtml, openModal, isModalOpen, removeModalDOM } from './ui.js';
+import { ICO, escapeHtml, openModal, closeModal, isModalOpen, removeModalDOM } from './ui.js';
 import { renderDashboard } from './dashboard.js';
 import { renderPeople } from './people.js';
 import { renderLedger } from './ledger.js';
@@ -128,8 +128,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const CHANGELOG = [
+  ['1.1.0', 'Neuer Import der Mobilfunk-Tabelle (PDF): legt Personen, Zahlungshistorie, Zahlart und Kartentypen automatisch aus dem Zahlungs-Log an und übernimmt die Vertragskosten – mit Vorschau und Merge (keine Duplikate). Erreichbar über „Mehr → Daten".'],
   ['1.0.0', 'Erste Version: Übersicht (wer ist diesen Monat offen?), Personen mit Karten/SIM-Inventar, Soll/Ist-Matrix über Monate, DKB-Import (PDF & CSV) mit automatischem Abgleich, Kostenrechnung und Daten-Sicherung. Alle Daten bleiben lokal im Browser.']
 ];
 
@@ -154,6 +155,7 @@ export function renderMore() {
         <div class="muted small" style="margin-bottom:10px">${state.people.length} Personen gespeichert. Alles liegt nur auf diesem Gerät.</div>
         <button class="row-btn" onclick="exportBackup()"><span class="row-ic">${ICO.download}</span><span>Sicherung exportieren (JSON)</span><span class="row-arrow">Download</span></button>
         <button class="row-btn" onclick="importData()"><span class="row-ic">${ICO.upload}</span><span>Daten importieren (JSON / CSV)</span><span class="row-arrow">Datei</span></button>
+        <button class="row-btn" onclick="importTablePdf()"><span class="row-ic">${ICO.card}</span><span>Mobilfunk-Tabelle (PDF) importieren</span><span class="row-arrow">PDF</span></button>
       </div>
 
       <div class="card">
@@ -206,7 +208,7 @@ function init() {
 }
 
 Object.assign(window, {
-  showScreen, navBack, toggleTheme,
+  showScreen, navBack, toggleTheme, closeModal,
   renderMore, openChangelog, exportBackup, importData
 });
 

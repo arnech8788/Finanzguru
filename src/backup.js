@@ -1,7 +1,9 @@
 // Daten sichern/wiederherstellen (JSON) + Bootstrap-Import (JSON oder CSV).
-import { escapeHtml, confirmDialog, toast } from './ui.js';
+import { ICO, escapeHtml, openModal, closeModal, confirmDialog, toast } from './ui.js';
 import { state, save, applyImportedState } from './main.js';
-import { parseEUR } from './money.js';
+import { parseEUR, fmtEUR } from './money.js';
+import { scheduleLabel } from './data/schedules.js';
+import { parseMobilfunkPdf, buildImportFromLog } from './parseTable.js';
 
 export function exportBackup() {
   const data = JSON.stringify({
@@ -100,4 +102,63 @@ export function importData() {
   input.click();
 }
 
-Object.assign(window, { exportBackup, importData });
+// ---- Mobilfunk-Tabellen-PDF importieren -----------------------------------
+export function importTablePdf() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,application/pdf';
+  input.onchange = async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    toast('PDF wird gelesen…');
+    try {
+      const { entries, costs } = await parseMobilfunkPdf(file);
+      if (!entries.length) { toast('Keine Tabellen-Zeilen erkannt. Ist es der Tabellen-Export?', 'err'); return; }
+      const built = buildImportFromLog(entries, costs, state.people, state.ledger);
+      if (!built.summary.length) { toast('Keine Personen im Zahlungs-Log gefunden', 'err'); return; }
+      showTablePreview(built);
+    } catch (e) {
+      console.warn('table import failed', e);
+      toast('PDF konnte nicht gelesen werden', 'err');
+    }
+  };
+  input.click();
+}
+
+let pendingTableImport = null;
+
+function showTablePreview(built) {
+  pendingTableImport = built;
+  const { summary, costs } = built;
+  const neu = summary.filter((s) => s.isNew).length;
+  const upd = summary.length - neu;
+  const rows = summary.map((s) => `
+    <div class="imp-row">
+      <div class="dash-meta"><b>${escapeHtml(s.name)}</b>
+        <small>${fmtEUR(s.expectedAmount)} · ${escapeHtml(scheduleLabel(s.schedule))} · ${s.cards} Karte(n) · ${s.payments} Zahlung(en)</small></div>
+      <span class="status-badge" style="--sc:${s.isNew ? '#2fb86b' : '#2d9cdb'}">${s.isNew ? 'neu' : 'Update'}</span>
+    </div>`).join('');
+  const costKeys = Object.keys(costs);
+  const costStr = costKeys.length
+    ? `<p class="muted small" style="margin:6px 0 0">Kosten erkannt: ${costKeys.map((k) => fmtEUR(costs[k])).join(' · ')}</p>` : '';
+  openModal('Tabelle importieren', `
+    <p class="small" style="margin:0 0 8px">${summary.length} Personen erkannt (${neu} neu, ${upd} aktualisiert). Beträge & Rhythmus sind Startwerte – in „Personen" jederzeit editierbar.</p>
+    ${costStr}
+    <div class="imp-list" style="margin:12px 0">${rows}</div>
+    <p class="muted small">${ICO.shield} Hinweis: SIM-/Telefonnummern (Seite 3) und IBANs sind in dieser PDF nicht enthalten. IBANs lernt die App automatisch beim DKB-Import.</p>
+    <div class="modal-actions" style="margin-top:8px">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="applyTableImport()">${summary.length} importieren</button>
+    </div>`, { onClose: () => { pendingTableImport = null; } });
+}
+
+export function applyTableImport() {
+  const built = pendingTableImport;
+  pendingTableImport = null;
+  if (!built) { closeModal(); return; }
+  applyImportedState({ people: built.people, ledger: built.ledger, costs: built.costs });
+  closeModal();
+  toast(`${built.summary.length} Personen importiert`, 'ok');
+}
+
+Object.assign(window, { exportBackup, importData, importTablePdf, applyTableImport });

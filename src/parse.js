@@ -88,8 +88,9 @@ export function transactionsFromLines(lines) {
   return txns.filter((t) => t.date && Number.isFinite(t.amount));
 }
 
-// PDF -> Transaction[]. pdf.js wird nur hier (lazy) geladen.
-export async function parseDkbPdf(file) {
+// PDF -> einzelne (visuelle) Textzeilen. pdf.js wird nur hier (lazy) geladen.
+// Wiederverwendet von parseDkbPdf (Kontoauszug) und parseTable (Mobilfunk-Tabelle).
+export async function extractPdfLines(file) {
   const pdfjs = await import('pdfjs-dist');
   const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
   pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -124,7 +125,12 @@ export async function parseDkbPdf(file) {
     }
     pushLine();
   }
-  return transactionsFromLines(allLines);
+  return allLines;
+}
+
+// PDF-Kontoauszug -> Transaction[].
+export async function parseDkbPdf(file) {
+  return transactionsFromLines(await extractPdfLines(file));
 }
 
 // ---- CSV (DKB-Umsätze) ----------------------------------------------------
