@@ -27,7 +27,8 @@ Update-Toast via `registerSW({ onNeedRefresh })` in `src/main.js`. PDF-Parsing n
 ## Deployment
 
 Push auf `main` → GitHub Action (`.github/workflows/pages.yml`) baut mit Vite und
-deployt `dist/` nach GitHub Pages. Base ist `/`.
+deployt `dist/` nach GitHub Pages. Custom Domain via `public/CNAME`
+(`finanzguru.arne-chudobba.de`) – landet im Build-Output `dist/CNAME`. Base ist `/`.
 
 ## Architektur
 
