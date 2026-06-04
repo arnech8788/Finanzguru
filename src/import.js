@@ -7,7 +7,7 @@ import { expectedForMonth } from './data/schedules.js';
 import { isSharedIban, normalizeIban, normalizeName, looksAnonymous } from './match.js';
 import { matchMonth } from './match.js';
 import { parseFile } from './parse.js';
-import { getReceived, setReceived, statusFor, STATUS, renderLedger } from './ledger.js';
+import { getReceived, setReceived, clearReceived, statusFor, STATUS, renderLedger } from './ledger.js';
 
 let importMonth = currentMonth();
 let parsed = null; // { txns, fileName }
@@ -110,7 +110,10 @@ function peopleRow({ p, exp, a }) {
   let right = '';
   if (a && !booked) {
     const conf = a.confidence === 'high' ? 'sicher' : a.confidence === 'medium' ? 'wahrscheinlich' : 'unsicher';
-    right = `<button class="btn btn-sm btn-primary" onclick="bookAssignment('${p.id}')">${fmtEUR(a.txn.amount)} übernehmen</button>
+    right = `<div class="imp-btns">
+        <button class="btn btn-sm btn-primary" onclick="bookAssignment('${p.id}')">${fmtEUR(a.txn.amount)} übernehmen</button>
+        <button class="btn btn-sm btn-ghost imp-reject" title="Vorschlag verwerfen" onclick="rejectAssignment('${p.id}')">${ICO.x}</button>
+      </div>
       <span class="conf conf-${a.confidence}">${escapeHtml(conf)} · ${escapeHtml((a.reasons || []).join('+') || '–')}</span>`;
   } else {
     right = `<span class="status-badge" style="--sc:${meta.color}">${escapeHtml(meta.label)}</span>`;
@@ -182,6 +185,21 @@ export function bookAssignment(personId) {
   toast('Übernommen', 'ok');
 }
 
+// Vorschlag verwerfen: Zuordnung lösen, Eingang zurück in „nicht zugeordnet".
+// (Dauerhaftes Vergessen eines gelernten Hinweises erfolgt in der Personen-Ansicht.)
+export function rejectAssignment(personId) {
+  const idx = result.assignments.findIndex((x) => x.personId === personId);
+  if (idx < 0) return;
+  const [a] = result.assignments.splice(idx, 1);
+  // Falls bereits gebucht, Buchung dieser Transaktion rückgängig machen.
+  const e = getReceived(personId, importMonth);
+  if (e && e.matchedTxnId === a.txn.id) clearReceived(personId, importMonth);
+  if (!result.unmatched.some((t) => t.id === a.txn.id)) result.unmatched.push(a.txn);
+  save();
+  afterChange();
+  toast('Vorschlag verworfen');
+}
+
 export function bookAll() {
   let n = 0;
   for (const a of result.assignments) {
@@ -250,5 +268,5 @@ function afterChange() {
 
 Object.assign(window, {
   renderImport, setImportMonth, pickImportFile, bookAssignment, bookAll,
-  assignUnmatched, assignUnmatchedTo
+  rejectAssignment, assignUnmatched, assignUnmatchedTo
 });

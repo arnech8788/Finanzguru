@@ -81,10 +81,19 @@ function emptyPeople() {
 export function openPerson(id) {
   const p = state.people.find((x) => x.id === id);
   if (!p) return;
+  openModal(p.name || 'Person', personViewHtml(p));
+}
+
+function refreshPersonView(id) {
+  const p = state.people.find((x) => x.id === id);
+  if (p) updateModalBody(personViewHtml(p), p.name || 'Person');
+}
+
+function personViewHtml(p) {
   const amt = Number(p.expectedAmount) || 0;
   const exp = expectedForMonth(p, currentMonth());
   const cards = (p.cards || []);
-  openModal(p.name || 'Person', `
+  return `
     <div class="person-view">
       <div class="pv-grid">
         <div><span class="muted small">Monatlicher Anteil</span><b>${amt ? fmtEUR(amt) : '–'}</b></div>
@@ -92,17 +101,75 @@ export function openPerson(id) {
         <div><span class="muted small">Zahlart</span><b>${escapeHtml(paymentMethodLabel(p.paymentMethod))}</b></div>
         <div><span class="muted small">Soll diesen Monat</span><b>${exp > 0 ? fmtEUR(exp) : '–'}</b></div>
       </div>
-      ${(p.ibans || []).length ? `<div class="pv-block"><span class="muted small">IBAN(s)</span>${p.ibans.map((i) => `<div class="pv-iban">${escapeHtml(i)}</div>`).join('')}</div>` : ''}
       ${p.notes ? `<div class="pv-block"><span class="muted small">Notiz</span><p style="white-space:pre-wrap;margin:4px 0 0">${escapeHtml(p.notes)}</p></div>` : ''}
       <div class="pv-block">
         <span class="muted small">Karten / SIM (${cards.length})</span>
         ${cards.length ? cards.map(cardView).join('') : '<p class="muted small" style="margin:6px 0 0">Keine Karten hinterlegt.</p>'}
       </div>
+      ${learnedSection(p)}
       <div class="modal-actions" style="margin-top:18px">
         <button class="btn btn-danger" onclick="deletePerson('${p.id}')">${ICO.trash} Löschen</button>
         <button class="btn btn-primary" onclick="editPerson('${p.id}')">${ICO.edit} Bearbeiten</button>
       </div>
-    </div>`);
+    </div>`;
+}
+
+// Gelernte Abgleich-Daten anzeigen + einzeln/komplett entfernbar machen.
+function learnedSection(p) {
+  const ibans = p.ibans || [];
+  const na = p.nameAliases || [];
+  const pa = p.payAliases || [];
+  if (!ibans.length && !na.length && !pa.length) {
+    return `<div class="pv-block"><span class="muted small">Gelernt für den Abgleich</span>
+      <p class="muted small" style="margin:4px 0 0">Noch nichts gelernt. Beim Zuordnen von DKB-Eingängen merkt sich die App IBAN, Namensvarianten und PayPal-Hinweise.</p></div>`;
+  }
+  const chip = (label, handler) => `<span class="learn-chip">${escapeHtml(label)}<button type="button" aria-label="entfernen" onclick="${handler}">${ICO.x}</button></span>`;
+  const parts = [];
+  if (ibans.length) parts.push(`<div class="learn-row"><span class="learn-k">IBAN</span><div class="learn-chips">${ibans.map((ib, i) => chip(ib, `removePersonIban('${p.id}',${i})`)).join('')}</div></div>`);
+  if (na.length) parts.push(`<div class="learn-row"><span class="learn-k">Namensvarianten</span><div class="learn-chips">${na.map((n, i) => chip(n, `removeNameAlias('${p.id}',${i})`)).join('')}</div></div>`);
+  if (pa.length) parts.push(`<div class="learn-row"><span class="learn-k">PayPal-/Anonym-Hinweise</span><div class="learn-chips">${pa.map((a, i) => chip(`${fmtEUR(a.amount)}`, `removePayAlias('${p.id}',${i})`)).join('')}</div></div>`);
+  return `<div class="pv-block">
+    <span class="muted small">Gelernt für den Abgleich</span>
+    ${parts.join('')}
+    <button class="link-reset" onclick="resetLearned('${p.id}')">${ICO.trash} Alle gelernten Zuordnungen zurücksetzen</button>
+  </div>`;
+}
+
+export function removePersonIban(id, i) {
+  const p = state.people.find((x) => x.id === id);
+  if (!p || !Array.isArray(p.ibans)) return;
+  p.ibans.splice(i, 1);
+  save();
+  refreshPersonView(id);
+  toast('IBAN entfernt');
+}
+export function removeNameAlias(id, i) {
+  const p = state.people.find((x) => x.id === id);
+  if (!p || !Array.isArray(p.nameAliases)) return;
+  p.nameAliases.splice(i, 1);
+  save();
+  refreshPersonView(id);
+  toast('Namensvariante entfernt');
+}
+export function removePayAlias(id, i) {
+  const p = state.people.find((x) => x.id === id);
+  if (!p || !Array.isArray(p.payAliases)) return;
+  p.payAliases.splice(i, 1);
+  save();
+  refreshPersonView(id);
+  toast('Hinweis entfernt');
+}
+export async function resetLearned(id) {
+  const p = state.people.find((x) => x.id === id);
+  if (!p) return;
+  const ok = await confirmDialog('Alle gelernten Zuordnungen dieser Person zurücksetzen? (IBANs, Namensvarianten und PayPal-Hinweise – die Person und ihre Zahlungen bleiben erhalten.)', { okLabel: 'Zurücksetzen', danger: true });
+  if (!ok) return;
+  p.ibans = [];
+  p.nameAliases = [];
+  p.payAliases = [];
+  save();
+  refreshPersonView(id);
+  toast('Gelernte Daten zurückgesetzt');
 }
 
 function cardView(c) {
@@ -272,5 +339,6 @@ export function closePersonModal() { draft = null; closeModal(); }
 
 Object.assign(window, {
   renderPeople, setPeopleSearch, newPerson, editPerson, openPerson,
-  addCard, removeCard, savePerson, deletePerson, closePersonModal
+  addCard, removeCard, savePerson, deletePerson, closePersonModal,
+  removePersonIban, removeNameAlias, removePayAlias, resetLearned
 });

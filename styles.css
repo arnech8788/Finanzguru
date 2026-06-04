@@ -210,6 +210,17 @@ svg { width: 22px; height: 22px; flex: none; }
 .cc-head .muted { margin-left: auto; }
 .cc-lines { margin-top: 5px; word-break: break-word; }
 
+/* Gelernte Abgleich-Daten */
+.learn-row { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.learn-k { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--tx3); }
+.learn-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.learn-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--bdr); border-radius: 999px; padding: 4px 6px 4px 11px; font-size: 12px; max-width: 100%; }
+.learn-chip { word-break: break-all; }
+.learn-chip button { flex: none; background: var(--bg3); border: none; color: var(--tx2); width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; }
+.learn-chip button svg { width: 13px; height: 13px; }
+.link-reset { margin-top: 12px; background: none; border: none; color: var(--warn); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 0; }
+.link-reset svg { width: 15px; height: 15px; }
+
 /* People editor */
 .editor-section { border-top: 1px solid var(--bdr); padding-top: 12px; margin-top: 4px; }
 .es-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -249,6 +260,9 @@ svg { width: 22px; height: 22px; flex: none; }
 .imp-list { display: flex; flex-direction: column; gap: 8px; }
 .imp-row { display: flex; align-items: center; gap: 11px; background: var(--bg2); border: 1px solid var(--bdr); border-radius: var(--r-sm); padding: 10px 12px; }
 .imp-right { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.imp-btns { display: flex; gap: 6px; align-items: center; }
+.imp-reject { padding: 8px; color: var(--tx2); }
+.imp-reject svg { width: 14px; height: 14px; }
 .conf { font-size: 10px; color: var(--tx3); }
 .conf-high { color: var(--ok); }
 .conf-medium { color: var(--amber); }
