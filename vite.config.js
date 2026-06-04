@@ -12,6 +12,8 @@ export default defineConfig({
         // .mjs/.wasm aufnehmen, damit der (lazy geladene) pdf.js-Worker offline verfügbar ist.
         globPatterns: ['**/*.{js,mjs,css,html,png,svg,json,ico,wasm}'],
         navigateFallback: '/index.html',
+        // eigener Push-Handler (Web-Push) wird in den generierten SW eingebunden:
+        importScripts: ['push-sw.js'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
       },
       manifest: false // bestehende public/manifest.json wird weiterverwendet

@@ -1,0 +1,17 @@
+{
+  "name": "finanzguru-push",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker als Web-Push-Relay für Finanzguru-Erinnerungen.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "@block65/webcrypto-web-push": "latest"
+  },
+  "devDependencies": {
+    "wrangler": "^3",
+    "web-push": "^3.6.7"
+  }
+}

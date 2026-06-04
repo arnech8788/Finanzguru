@@ -283,6 +283,12 @@ svg { width: 22px; height: 22px; flex: none; }
 .cost-total.pos b { color: var(--ok); }
 .cost-total.neg b { color: var(--warn); }
 
+/* Erinnerungen-Einstellungen */
+.notif-settings { margin-top: 10px; }
+.notif-settings .cost-row input[type="checkbox"] { width: 22px; height: 22px; }
+.notif-settings .cost-row input[type="time"] { width: 130px; }
+.notif-settings .advanced { margin-top: 10px; }
+
 /* Bottom nav */
 .nav {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);

@@ -7,6 +7,7 @@ import { renderLedger } from './ledger.js';
 import { renderImport } from './import.js';
 import { renderCosts } from './costs.js';
 import { exportBackup, importData } from './backup.js';
+import { ensureNotifDefaults, initNotify, requestSync } from './notify.js';
 
 const STORE_KEY = 'finanzguru-v1';
 const THEME_KEY = 'finanzguru-theme';
@@ -29,6 +30,8 @@ export function save() {
   } catch (e) {
     console.warn('save failed', e);
   }
+  // Erinnerungen nach Datenänderungen neu an den Server synchronisieren (debounced).
+  requestSync();
 }
 
 export function load() {
@@ -48,6 +51,7 @@ export function load() {
   if (!state.settings || typeof state.settings !== 'object') state.settings = {};
   if (state.settings.amountTolerance == null) state.settings.amountTolerance = 0.5;
   if (state.settings.dateGraceDays == null) state.settings.dateGraceDays = 5;
+  ensureNotifDefaults(state);
   state.schema = 1;
 }
 
@@ -57,6 +61,7 @@ export function applyImportedState(partial) {
   if (partial.ledger && typeof partial.ledger === 'object') state.ledger = partial.ledger;
   if (partial.costs && typeof partial.costs === 'object') state.costs = { ...state.costs, ...partial.costs };
   if (partial.settings && typeof partial.settings === 'object') state.settings = { ...state.settings, ...partial.settings };
+  if (partial.notifications && typeof partial.notifications === 'object') { state.notifications = partial.notifications; ensureNotifDefaults(state); }
   save();
   renderActive(currentScreen);
 }
@@ -128,13 +133,54 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const CHANGELOG = [
+  ['1.4.0', 'Erinnerungen: Die App erinnert an den monatlichen DKB-Export (z. B. am 5.), an überfällige monatliche Zahlungen und rechtzeitig vor vierteljährlichen/jährlichen Zahlungen (Vorlauf einstellbar). Lokale Hinweise funktionieren sofort; für echte Push bei geschlossener App lässt sich optional ein kleiner Push-Server (siehe server/) hinterlegen. Alles unter „Mehr → Erinnerungen" konfigurierbar.'],
   ['1.3.0', 'Gelernte Zuordnungen sind jetzt einseh- und löschbar: In der Personen-Ansicht zeigt der Bereich „Gelernt für den Abgleich" IBANs, Namensvarianten und PayPal-/Anonym-Hinweise – einzeln entfernbar oder komplett zurücksetzbar. Im Import lässt sich ein (z. B. falsch gelernter) Vorschlag per „✗" verwerfen und der Eingang landet wieder unter „nicht zugeordnet".'],
   ['1.2.0', 'Der DKB-Import lernt jetzt aus manuellen Zuordnungen: einmal zugeordnete Eingänge werden künftig automatisch erkannt – über die IBAN, über gelernte Namensvarianten (z. B. Ligaturen/Tippfehler/Gemeinschaftskonten) und für anonyme Zahlungen wie PayPal/Netflix über einen gelernten Hinweis (Sammel-IBAN + Betrag).'],
   ['1.1.0', 'Neuer Import der Mobilfunk-Tabelle (PDF): legt Personen, Zahlungshistorie, Zahlart und Kartentypen automatisch aus dem Zahlungs-Log an und übernimmt die Vertragskosten – mit Vorschau und Merge (keine Duplikate). Erreichbar über „Mehr → Daten".'],
   ['1.0.0', 'Erste Version: Übersicht (wer ist diesen Monat offen?), Personen mit Karten/SIM-Inventar, Soll/Ist-Matrix über Monate, DKB-Import (PDF & CSV) mit automatischem Abgleich, Kostenrechnung und Daten-Sicherung. Alle Daten bleiben lokal im Browser.']
 ];
+
+function notifCard() {
+  const n = state.notifications || {};
+  const on = !!n.enabled;
+  const serverOn = !!(n.server && n.server.url);
+  const leadRow = (key, label) => `
+    <label class="cost-row"><span>Vorlauf ${escapeHtml(label)} (Tage)</span>
+      <input type="number" min="0" max="60" value="${escapeHtml(String((n.leadDays && n.leadDays[key]) != null ? n.leadDays[key] : 7))}" onchange="setNotif('leadDays.${key}', this.value)" ${on ? '' : 'disabled'}></label>`;
+  return `
+    <div class="card">
+      <div class="card-title">Erinnerungen</div>
+      <button class="row-btn" onclick="toggleNotifications()">
+        <span class="row-ic">${ICO.clock}</span>
+        <span>Push-Erinnerungen: ${on ? 'An' : 'Aus'}</span>
+        <span class="row-arrow">${on ? (serverOn ? 'Push' : 'lokal') : 'aktivieren'}</span>
+      </button>
+      ${on ? `
+      <div class="notif-settings">
+        <label class="cost-row"><span>DKB-Export-Erinnerung am Tag</span>
+          <input type="number" min="1" max="28" value="${escapeHtml(String(n.exportDay || 5))}" onchange="setNotif('exportDay', this.value)"></label>
+        <label class="cost-row"><span>Uhrzeit</span>
+          <input type="time" value="${escapeHtml(n.time || '09:00')}" onchange="setNotif('time', this.value)"></label>
+        <label class="cost-row"><span>Überfällig-Erinnerung (monatlich)</span>
+          <input type="checkbox" ${n.overdueEnabled !== false ? 'checked' : ''} onchange="setNotif('overdueEnabled', this.checked)"></label>
+        <label class="cost-row"><span>… prüfen ab Tag</span>
+          <input type="number" min="1" max="28" value="${escapeHtml(String(n.overdueCheckDay || 8))}" onchange="setNotif('overdueCheckDay', this.value)"></label>
+        ${leadRow('quarterly', 'vierteljährlich')}
+        ${leadRow('yearly', 'jährlich')}
+        ${leadRow('bimonthly', 'alle 2 Monate')}
+        <button class="row-btn" onclick="sendTestNotification()"><span class="row-ic">${ICO.info}</span><span>Testbenachrichtigung senden</span><span class="row-arrow">Test</span></button>
+        <details class="advanced">
+          <summary>Erweitert: Push-Server</summary>
+          <p class="muted small" style="margin:8px 0">Für Push bei geschlossener App: URL deines Push-Workers + VAPID-Public-Key (siehe server/README.md). Leer = nur lokale Erinnerungen.</p>
+          <label class="fld"><span>Server-URL</span><input type="url" value="${escapeHtml((n.server && n.server.url) || '')}" placeholder="https://…workers.dev" onchange="setNotif('server.url', this.value.trim())"></label>
+          <label class="fld"><span>VAPID Public Key</span><input type="text" value="${escapeHtml((n.server && n.server.vapidPublicKey) || '')}" placeholder="BNc…" onchange="setNotif('server.vapidPublicKey', this.value.trim())"></label>
+          <div class="muted small">Status: ${serverOn ? (n.push && n.push.subscribed ? 'abonniert ✓' : 'konfiguriert, noch nicht abonniert') : 'kein Server (nur lokal)'}</div>
+        </details>
+      </div>` : `<p class="muted small" style="margin:6px 0 0">Erinnert dich an den DKB-Export, an überfällige monatliche Zahlungen und rechtzeitig vor vierteljährlichen/jährlichen Zahlungen.</p>`}
+    </div>`;
+}
 
 export function renderMore() {
   const el = document.getElementById('screen-more');
@@ -151,6 +197,8 @@ export function renderMore() {
           <span class="row-arrow">wechseln</span>
         </button>
       </div>
+
+      ${notifCard()}
 
       <div class="card">
         <div class="card-title">Daten</div>
@@ -207,6 +255,7 @@ function init() {
   initHistory();
   applyScreen('dashboard');
   initPWA();
+  initNotify().catch(() => {});
 }
 
 Object.assign(window, {
