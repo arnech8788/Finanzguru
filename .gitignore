@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.DS_Store
+.vs/
+
+# ── Datenschutz: niemals echte Personen-/Bankdaten committen ──
+# Roh-Exporte und Backups bleiben lokal beim Nutzer.
+*.pdf
+*.csv
+*-backup*.json
+*-bootstrap*.json
+kontoauszug*
+umsaetze*
+Umsaetze*

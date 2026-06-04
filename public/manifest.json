@@ -1,0 +1,19 @@
+{
+  "name": "Finanzguru – Mobilfunk-Tracking",
+  "short_name": "Finanzguru",
+  "description": "Mobilfunk-Rückzahlungen tracken und mit dem DKB-Kontoauszug abgleichen.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#13161c",
+  "theme_color": "#13161c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

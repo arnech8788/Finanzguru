@@ -1,0 +1,20 @@
+{
+  "name": "finanzguru",
+  "version": "1.0.0",
+  "description": "PWA zum Tracken der Mobilfunk-Rückzahlungen (Telekom PlusKarten/MultiSIM) und Abgleich mit dem DKB-Kontoauszug.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": ["mobilfunk", "telekom", "dkb", "zahlungen", "pwa", "tracking"],
+  "license": "ISC",
+  "devDependencies": {
+    "vite": "^8.0.14",
+    "vite-plugin-pwa": "^1.3.0"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.7.76"
+  }
+}

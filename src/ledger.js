@@ -1,0 +1,194 @@
+// Soll/Ist-Buch: erhaltene Zahlungen je Person & Monat + Matrix-Ansicht.
+import { ICO, escapeHtml, openModal, closeModal, toast } from './ui.js';
+import { state, save, rerenderDashboard } from './main.js';
+import { fmtEUR, parseEUR, fmtDate, monthLabel, monthShort, lastMonths, currentMonth, todayISO, shiftMonth } from './money.js';
+import { expectedForMonth, governingDueMonth, scheduleLabel } from './data/schedules.js';
+
+export const STATUS = {
+  paid: { label: 'Bezahlt', color: '#2fb86b' },
+  open: { label: 'Offen', color: '#e23b3b' },
+  partial: { label: 'Teilweise', color: '#f5a623' },
+  advance: { label: 'Voraus', color: '#2d9cdb' },
+  none: { label: 'Nicht fällig', color: '#5b6270' }
+};
+
+let viewEnd = currentMonth();
+let viewSize = 6;
+
+// ---- Datenzugriff ---------------------------------------------------------
+function bucket(personId) {
+  if (!state.ledger[personId]) state.ledger[personId] = {};
+  return state.ledger[personId];
+}
+
+export function getReceived(personId, month) {
+  const b = state.ledger[personId];
+  return (b && b[month]) || null;
+}
+
+export function setReceived(personId, month, { received, receivedDate, matchedTxnId, note } = {}) {
+  const b = bucket(personId);
+  const entry = b[month] || {};
+  if (received != null) entry.received = Number(received) || 0;
+  if (receivedDate !== undefined) entry.receivedDate = receivedDate || '';
+  if (matchedTxnId !== undefined) entry.matchedTxnId = matchedTxnId || '';
+  if (note !== undefined) entry.note = note || '';
+  entry.updated = Date.now();
+  b[month] = entry;
+}
+
+export function addReceived(personId, month, amount, receivedDate, matchedTxnId) {
+  const prev = getReceived(personId, month);
+  const sum = (prev ? Number(prev.received) || 0 : 0) + (Number(amount) || 0);
+  setReceived(personId, month, { received: sum, receivedDate, matchedTxnId });
+}
+
+export function clearReceived(personId, month) {
+  const b = state.ledger[personId];
+  if (b) delete b[month];
+}
+
+// ---- Status ---------------------------------------------------------------
+export function statusFor(person, month) {
+  const exp = expectedForMonth(person, month);
+  const entry = getReceived(person.id, month);
+  const rec = entry ? Number(entry.received) || 0 : 0;
+  if (exp > 0) {
+    if (rec <= 0) return 'open';
+    if (rec + 0.01 >= exp) return 'paid';
+    return 'partial';
+  }
+  if (rec > 0) return 'paid';
+  const due = governingDueMonth(person, month);
+  if (due !== month) {
+    const dueExp = expectedForMonth(person, due);
+    const dueRec = (getReceived(person.id, due) || {}).received || 0;
+    if (dueExp > 0 && dueRec + 0.01 >= dueExp) return 'advance';
+  }
+  return 'none';
+}
+
+// ---- Matrix-Ansicht -------------------------------------------------------
+export function setLedgerWindow(deltaMonths) {
+  viewEnd = shiftMonth(viewEnd, deltaMonths);
+  renderLedger();
+}
+
+export function renderLedger() {
+  const el = document.getElementById('screen-ledger');
+  if (!el) return;
+  const months = lastMonths(viewSize, viewEnd);
+  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+
+  const head = `<th class="lg-name-h">Person</th>` +
+    months.map((m) => `<th>${escapeHtml(monthShort(m))}</th>`).join('');
+
+  const rows = people.map((person) => {
+    const cells = months.map((m) => {
+      const st = statusFor(person, m);
+      const meta = STATUS[st];
+      const entry = getReceived(person.id, m);
+      const rec = entry ? Number(entry.received) || 0 : 0;
+      const label = st === 'none' ? '' : (rec > 0 ? fmtEUR(rec).replace(/\s?€/, '') : (st === 'open' ? '–' : ''));
+      return `<td><button class="lg-cell lg-${st}" style="--sc:${meta.color}"
+        onclick="openLedgerCell('${person.id}','${m}')" title="${escapeHtml(meta.label)}">${escapeHtml(label)}</button></td>`;
+    }).join('');
+    return `<tr><th class="lg-name" onclick="openPerson('${person.id}')">${escapeHtml(person.name || '(ohne Name)')}</th>${cells}</tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <header class="topbar"><h1>Soll/Ist</h1></header>
+    <div class="pad">
+      ${people.length === 0 ? emptyLedger() : `
+      <div class="lg-toolbar">
+        <button class="icon-btn" onclick="setLedgerWindow(-${viewSize})" aria-label="früher">${ICO.chevL}</button>
+        <span class="lg-range">${escapeHtml(monthLabel(months[0]))} – ${escapeHtml(monthLabel(months[months.length - 1]))}</span>
+        <button class="icon-btn" onclick="setLedgerWindow(${viewSize})" aria-label="später">${ICO.chevR}</button>
+      </div>
+      <div class="lg-scroll">
+        <table class="lg-table">
+          <thead><tr>${head}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="lg-legend">
+        ${Object.entries(STATUS).filter(([k]) => k !== 'none').map(([k, s]) =>
+          `<span class="lg-leg"><i style="background:${s.color}"></i>${escapeHtml(s.label)}</span>`).join('')}
+      </div>
+      <p class="muted small" style="margin-top:14px">Tippe eine Zelle, um den Zahlungseingang zu bearbeiten. Tippe einen Namen, um die Person zu öffnen.</p>
+      `}
+    </div>`;
+}
+
+function emptyLedger() {
+  return `<div class="empty">${ICO.calendar}<p>Noch keine Personen angelegt.</p>
+    <p class="muted small">Lege unter „Personen" Beiträge an oder importiere deine Daten unter „Mehr".</p></div>`;
+}
+
+// ---- Zell-Editor ----------------------------------------------------------
+export function openLedgerCell(personId, month) {
+  const person = state.people.find((p) => p.id === personId);
+  if (!person) return;
+  const exp = expectedForMonth(person, month);
+  const entry = getReceived(personId, month) || {};
+  const st = statusFor(person, month);
+  openModal(`${person.name} · ${monthLabel(month)}`, `
+    <form id="cellForm" onsubmit="return false">
+      <div class="cell-info">
+        <div><span class="muted small">Soll (${escapeHtml(scheduleLabel(person.schedule))})</span><b>${exp > 0 ? fmtEUR(exp) : '– (vorausbezahlt/kein Fälligkeitsmonat)'}</b></div>
+        <div><span class="muted small">Status</span><b style="color:${STATUS[st].color}">${STATUS[st].label}</b></div>
+      </div>
+      <div class="fld-row">
+        <label class="fld"><span>Erhalten (€)</span><input name="received" type="text" inputmode="decimal" value="${entry.received != null ? String(entry.received).replace('.', ',') : ''}" placeholder="${exp > 0 ? String(exp).replace('.', ',') : '0'}"></label>
+        <label class="fld"><span>am</span><input name="date" type="date" value="${escapeHtml(entry.receivedDate || '')}"></label>
+      </div>
+      <label class="fld"><span>Notiz (optional)</span><input name="note" type="text" value="${escapeHtml(entry.note || '')}" placeholder="z. B. per PayPal"></label>
+      <div class="modal-actions">
+        ${entry.received != null ? `<button type="button" class="btn btn-danger" onclick="clearLedgerCell('${personId}','${month}')">${ICO.trash} Leeren</button>` : `<button type="button" class="btn btn-ghost" onclick="markCellPaid('${personId}','${month}')">${ICO.check} Soll erhalten</button>`}
+        <button type="button" class="btn btn-primary" onclick="saveLedgerCell('${personId}','${month}')">Speichern</button>
+      </div>
+    </form>`);
+}
+
+export function markCellPaid(personId, month) {
+  const person = state.people.find((p) => p.id === personId);
+  if (!person) return;
+  const exp = expectedForMonth(person, month);
+  setReceived(personId, month, { received: exp, receivedDate: todayISO() });
+  save();
+  closeModal();
+  renderLedger();
+  rerenderDashboard();
+  toast('Als bezahlt markiert', 'ok');
+}
+
+export function saveLedgerCell(personId, month) {
+  const form = document.getElementById('cellForm');
+  if (!form) return;
+  const fd = new FormData(form);
+  const recRaw = (fd.get('received') || '').toString().trim();
+  const received = recRaw ? parseEUR(recRaw) : 0;
+  setReceived(personId, month, {
+    received,
+    receivedDate: (fd.get('date') || '').toString(),
+    note: (fd.get('note') || '').toString().trim()
+  });
+  save();
+  closeModal();
+  renderLedger();
+  rerenderDashboard();
+  toast('Gespeichert', 'ok');
+}
+
+export function clearLedgerCell(personId, month) {
+  clearReceived(personId, month);
+  save();
+  closeModal();
+  renderLedger();
+  rerenderDashboard();
+  toast('Eintrag geleert');
+}
+
+Object.assign(window, {
+  renderLedger, setLedgerWindow, openLedgerCell, saveLedgerCell, clearLedgerCell, markCellPaid
+});
