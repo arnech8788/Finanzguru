@@ -43,9 +43,10 @@ export function scoreMatch(person, txn, expected, settings = {}) {
   if (txnIban && personIbans.includes(txnIban) && !isSharedIban(txnIban)) {
     score += 100; reasons.push('IBAN');
   }
-  const pName = normalizeName(person.name);
+  // Name inkl. gelernter Aliase (deckt Ligaturen/Tippfehler/Gemeinschaftskonten ab).
+  const pNames = [normalizeName(person.name), ...(person.nameAliases || []).map(normalizeName)].filter(Boolean);
   const tName = normalizeName(txn.name);
-  if (pName && tName && (tName.includes(pName) || pName.includes(tName))) {
+  if (tName && pNames.some((pn) => tName.includes(pn) || pn.includes(tName))) {
     score += 60; reasons.push('Name');
   }
   if (expected > 0 && Math.abs(txn.amount - expected) <= tol) {
@@ -54,10 +55,17 @@ export function scoreMatch(person, txn, expected, settings = {}) {
     // Teilzahlung/Mehrzahlung – schwacher Hinweis
     score += 5;
   }
+  // Gelernter Hinweis für anonyme Zahlungen (z. B. PayPal/Netflix mit Sammel-IBAN):
+  // wurde diese Person früher für genau diese (IBAN + Betrag) manuell zugeordnet?
+  if (!reasons.includes('IBAN') && !reasons.includes('Name') && (person.payAliases || []).length) {
+    const hit = person.payAliases.some((a) =>
+      a && normalizeIban(a.iban) === txnIban && Math.abs((Number(a.amount) || 0) - txn.amount) <= tol);
+    if (hit) { score += 70; reasons.push('Gelernt'); }
+  }
 
   let confidence = 'low';
   if (reasons.includes('IBAN')) confidence = 'high';
-  else if (reasons.includes('Name')) confidence = 'medium';
+  else if (reasons.includes('Name') || reasons.includes('Gelernt')) confidence = 'medium';
   return { score, confidence, reasons };
 }
 
@@ -97,8 +105,8 @@ export function matchMonth(people, txns, month, settings = {}) {
   const assignments = [];
   for (const p of pairs) {
     if (usedTxn.has(p.txn.id) || usedPerson.has(p.person.id)) continue;
-    // Mindestschwelle: reiner Betragstreffer ohne Name/IBAN reicht nicht.
-    if (!p.reasons.includes('IBAN') && !p.reasons.includes('Name')) continue;
+    // Mindestschwelle: reiner Betragstreffer ohne Name/IBAN/gelernten Hinweis reicht nicht.
+    if (!p.reasons.includes('IBAN') && !p.reasons.includes('Name') && !p.reasons.includes('Gelernt')) continue;
     usedTxn.add(p.txn.id);
     usedPerson.add(p.person.id);
     assignments.push({ personId: p.person.id, txn: p.txn, expected: p.expected, confidence: p.confidence, reasons: p.reasons });

@@ -128,8 +128,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const CHANGELOG = [
+  ['1.2.0', 'Der DKB-Import lernt jetzt aus manuellen Zuordnungen: einmal zugeordnete Eingänge werden künftig automatisch erkannt – über die IBAN, über gelernte Namensvarianten (z. B. Ligaturen/Tippfehler/Gemeinschaftskonten) und für anonyme Zahlungen wie PayPal/Netflix über einen gelernten Hinweis (Sammel-IBAN + Betrag).'],
   ['1.1.0', 'Neuer Import der Mobilfunk-Tabelle (PDF): legt Personen, Zahlungshistorie, Zahlart und Kartentypen automatisch aus dem Zahlungs-Log an und übernimmt die Vertragskosten – mit Vorschau und Merge (keine Duplikate). Erreichbar über „Mehr → Daten".'],
   ['1.0.0', 'Erste Version: Übersicht (wer ist diesen Monat offen?), Personen mit Karten/SIM-Inventar, Soll/Ist-Matrix über Monate, DKB-Import (PDF & CSV) mit automatischem Abgleich, Kostenrechnung und Daten-Sicherung. Alle Daten bleiben lokal im Browser.']
 ];

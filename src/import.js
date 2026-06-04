@@ -4,7 +4,7 @@ import { ICO, escapeHtml, openModal, closeModal, toast } from './ui.js';
 import { state, save, rerenderDashboard } from './main.js';
 import { fmtEUR, fmtDate, monthLabel, currentMonth, shiftMonth } from './money.js';
 import { expectedForMonth } from './data/schedules.js';
-import { isSharedIban, normalizeIban } from './match.js';
+import { isSharedIban, normalizeIban, normalizeName, looksAnonymous } from './match.js';
 import { matchMonth } from './match.js';
 import { parseFile } from './parse.js';
 import { getReceived, setReceived, statusFor, STATUS, renderLedger } from './ledger.js';
@@ -168,6 +168,9 @@ function bookOne(a) {
     receivedDate: a.txn.date,
     matchedTxnId: a.txn.id
   });
+  // Auch beim Bestätigen eines automatischen Treffers dazulernen (z. B. neue IBAN).
+  const person = state.people.find((p) => p.id === a.personId);
+  if (person) learnFromAssignment(person, a.txn);
 }
 
 export function bookAssignment(personId) {
@@ -202,17 +205,35 @@ export function assignUnmatched(txnId) {
     </div>`);
 }
 
+// Aus einer manuellen Zuordnung für künftige Importe lernen:
+//  - eindeutige IBAN  -> person.ibans (sicherer Auto-Treffer)
+//  - Sammel-IBAN/anonyme Zahlung (PayPal/Netflix) -> person.payAliases {iban, amount}
+//  - abweichender, nicht-anonymer Name -> person.nameAliases (Ligaturen/Tippfehler/Gemeinschaftskonto)
+function learnFromAssignment(person, txn) {
+  const iban = normalizeIban(txn.iban);
+  if (iban && !isSharedIban(iban)) {
+    if (!Array.isArray(person.ibans)) person.ibans = [];
+    if (!person.ibans.map(normalizeIban).includes(iban)) person.ibans.push(txn.iban);
+  } else if (iban) {
+    // anonyme Zahlung: (Sammel-IBAN + Betrag) als Hinweis merken
+    if (!Array.isArray(person.payAliases)) person.payAliases = [];
+    const exists = person.payAliases.some((a) => normalizeIban(a.iban) === iban && Math.abs((Number(a.amount) || 0) - txn.amount) <= 0.005);
+    if (!exists) person.payAliases.push({ iban: txn.iban, amount: txn.amount });
+  }
+  const nn = normalizeName(txn.name);
+  const pn = normalizeName(person.name);
+  if (nn && !looksAnonymous(txn) && !(nn.includes(pn) || pn.includes(nn))) {
+    if (!Array.isArray(person.nameAliases)) person.nameAliases = [];
+    if (!person.nameAliases.map(normalizeName).includes(nn)) person.nameAliases.push(nn);
+  }
+}
+
 export function assignUnmatchedTo(txnId, personId) {
   const txn = parsed.txns.find((t) => t.id === txnId);
   const person = state.people.find((p) => p.id === personId);
   if (!txn || !person) return;
   setReceived(personId, importMonth, { received: txn.amount, receivedDate: txn.date, matchedTxnId: txn.id });
-  // IBAN lernen (außer Sammel-IBANs wie PayPal).
-  const iban = normalizeIban(txn.iban);
-  if (iban && !isSharedIban(iban)) {
-    if (!Array.isArray(person.ibans)) person.ibans = [];
-    if (!person.ibans.map(normalizeIban).includes(iban)) person.ibans.push(txn.iban);
-  }
+  learnFromAssignment(person, txn);
   save();
   closeModal();
   // Transaktion aus dem Unmatched-Bucket nehmen.
