@@ -18,7 +18,9 @@ export let state = {
   people: [],
   ledger: {},
   costs: { grundgebuehr: 0, plusKarteMonatlich: 0, multiSimMonatlich: 0, sonstige: 0, aufschlagJeSim: 0 },
-  settings: { amountTolerance: 0.5, dateGraceDays: 5 }
+  settings: { amountTolerance: 0.5, dateGraceDays: 5 },
+  invoices: [],     // importierte Telekom-Mobilfunk-Rechnungen
+  invoiceMap: {}    // gelernte Position->Person Zuordnung ('sim:'+… / 'tel:'+…)
 };
 
 export let currentScreen = 'dashboard';
@@ -51,6 +53,8 @@ export function load() {
   if (!state.settings || typeof state.settings !== 'object') state.settings = {};
   if (state.settings.amountTolerance == null) state.settings.amountTolerance = 0.5;
   if (state.settings.dateGraceDays == null) state.settings.dateGraceDays = 5;
+  if (!Array.isArray(state.invoices)) state.invoices = [];
+  if (!state.invoiceMap || typeof state.invoiceMap !== 'object') state.invoiceMap = {};
   ensureNotifDefaults(state);
   state.schema = 1;
 }
@@ -61,6 +65,8 @@ export function applyImportedState(partial) {
   if (partial.ledger && typeof partial.ledger === 'object') state.ledger = partial.ledger;
   if (partial.costs && typeof partial.costs === 'object') state.costs = { ...state.costs, ...partial.costs };
   if (partial.settings && typeof partial.settings === 'object') state.settings = { ...state.settings, ...partial.settings };
+  if (Array.isArray(partial.invoices)) state.invoices = partial.invoices;
+  if (partial.invoiceMap && typeof partial.invoiceMap === 'object') state.invoiceMap = { ...state.invoiceMap, ...partial.invoiceMap };
   if (partial.notifications && typeof partial.notifications === 'object') { state.notifications = partial.notifications; ensureNotifDefaults(state); }
   save();
   renderActive(currentScreen);
@@ -133,8 +139,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const CHANGELOG = [
+  ['1.5.0', 'Telekom-Rechnungen: Lade eine Mobilfunk-Rechnung (PDF) einfach im Import-Tab – sie wird automatisch erkannt und unter „Kosten → Rechnungen" gespeichert. Dort siehst du alle Rechnungen und einen Abgleich pro Person: Was kostet die Karte laut Rechnung vs. was hat die Person zurückgezahlt (über-/unterdeckt). Positionen ohne passende Karte lassen sich einmalig zuordnen (wird für künftige Rechnungen gelernt). Rechnungen bleiben rein lokal und ändern das Soll/Ist-Buch nicht.'],
   ['1.4.0', 'Erinnerungen: Die App erinnert an den monatlichen DKB-Export (z. B. am 5.), an überfällige monatliche Zahlungen und rechtzeitig vor vierteljährlichen/jährlichen Zahlungen (Vorlauf einstellbar). Lokale Hinweise funktionieren sofort; für echte Push bei geschlossener App lässt sich optional ein kleiner Push-Server (siehe server/) hinterlegen. Alles unter „Mehr → Erinnerungen" konfigurierbar.'],
   ['1.3.0', 'Gelernte Zuordnungen sind jetzt einseh- und löschbar: In der Personen-Ansicht zeigt der Bereich „Gelernt für den Abgleich" IBANs, Namensvarianten und PayPal-/Anonym-Hinweise – einzeln entfernbar oder komplett zurücksetzbar. Im Import lässt sich ein (z. B. falsch gelernter) Vorschlag per „✗" verwerfen und der Eingang landet wieder unter „nicht zugeordnet".'],
   ['1.2.0', 'Der DKB-Import lernt jetzt aus manuellen Zuordnungen: einmal zugeordnete Eingänge werden künftig automatisch erkannt – über die IBAN, über gelernte Namensvarianten (z. B. Ligaturen/Tippfehler/Gemeinschaftskonten) und für anonyme Zahlungen wie PayPal/Netflix über einen gelernten Hinweis (Sammel-IBAN + Betrag).'],

@@ -107,6 +107,11 @@ svg { width: 22px; height: 22px; flex: none; }
 .btn.full { width: 100%; margin-top: 12px; }
 .btn:disabled { opacity: .5; cursor: default; }
 
+/* Segmented control (Tab-Umschaltung) */
+.seg { display: flex; gap: 4px; padding: 4px; background: var(--bg2); border: 1px solid var(--bdr); border-radius: var(--r-sm); margin-bottom: 14px; }
+.seg-btn { flex: 1; padding: 9px 12px; border: none; border-radius: calc(var(--r-sm) - 4px); background: transparent; color: var(--tx2); font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.seg-btn.active { background: var(--accent); color: var(--btn-tx); }
+
 /* Cards */
 .card { background: var(--bg2); border: 1px solid var(--bdr); border-radius: var(--r); padding: 16px; margin-bottom: 14px; }
 .card-title { font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: var(--tx2); margin-bottom: 12px; }

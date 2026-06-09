@@ -1,12 +1,14 @@
 // DKB-Import: Datei (PDF/CSV) einlesen, mit erwarteten Zahlungen abgleichen,
 // Eingänge buchen und unbekannte Eingänge manuell zuordnen.
 import { ICO, escapeHtml, openModal, closeModal, toast } from './ui.js';
-import { state, save, rerenderDashboard } from './main.js';
+import { state, save, rerenderDashboard, showScreen } from './main.js';
 import { fmtEUR, fmtDate, monthLabel, currentMonth, shiftMonth } from './money.js';
 import { expectedForMonth } from './data/schedules.js';
 import { isSharedIban, normalizeIban, normalizeName, looksAnonymous } from './match.js';
 import { matchMonth } from './match.js';
-import { parseFile } from './parse.js';
+import { parseFile, extractPdfLines, transactionsFromLines } from './parse.js';
+import { detectTelekomInvoice, parseTelekomInvoice } from './parseInvoice.js';
+import { storeInvoice, openInvoiceDetail } from './invoices.js';
 import { getReceived, setReceived, clearReceived, statusFor, STATUS, renderLedger } from './ledger.js';
 
 let importMonth = currentMonth();
@@ -38,8 +40,8 @@ export function renderImport() {
 
       <button class="dropzone" onclick="pickImportFile()" ${busy ? 'disabled' : ''}>
         ${ICO.upload}
-        <b>${busy ? 'Wird gelesen…' : 'DKB-Auszug wählen'}</b>
-        <span class="muted small">PDF-Kontoauszug oder CSV-Umsätze · alles bleibt lokal im Browser</span>
+        <b>${busy ? 'Wird gelesen…' : 'Datei wählen'}</b>
+        <span class="muted small">DKB-Auszug (PDF/CSV) oder Telekom-Rechnung (PDF) · wird automatisch erkannt · bleibt lokal</span>
       </button>
 
       ${parsed ? resultsHtml() : hintHtml()}
@@ -54,6 +56,7 @@ function hintHtml() {
       <li>Die App ordnet Eingänge per IBAN/Name automatisch zu.</li>
       <li>Sichere Treffer übernehmen, unbekannte Eingänge (z. B. PayPal) selbst zuordnen.</li>
     </ol>
+    <p class="muted small" style="margin:8px 0 0">${ICO.info} Eine <b>Telekom-Mobilfunk-Rechnung (PDF)</b> wird automatisch erkannt und unter <b>Kosten → Rechnungen</b> einsortiert &amp; pro Person abgeglichen.</p>
     <p class="muted small" style="margin:8px 0 0">${ICO.shield} Die Datei wird nicht hochgeladen – sie wird nur im Browser ausgewertet.</p>
   </div>`;
 }
@@ -145,7 +148,30 @@ export function pickImportFile() {
     if (!file) return;
     busy = true; renderImport();
     try {
-      const txns = await parseFile(file);
+      const isPdf = (file.name || '').toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+      let txns;
+      if (isPdf) {
+        const lines = await extractPdfLines(file);
+        // Telekom-Mobilfunk-Rechnung? -> als Rechnung importieren statt als Kontoauszug.
+        if (detectTelekomInvoice(lines)) {
+          const inv = parseTelekomInvoice(lines, file.name);
+          if (!inv.month || !inv.positions.length) {
+            toast('Rechnung nicht erkannt. Ist es eine Telekom-Mobilfunk-Rechnung?', 'err');
+            busy = false; renderImport(); return;
+          }
+          const dup = (state.invoices || []).some((i) => i.id === inv.id);
+          if (!dup) storeInvoice(inv);
+          busy = false; renderImport();
+          toast(dup ? 'Rechnung bereits importiert' : `Rechnung ${monthLabel(inv.month)} importiert`, dup ? '' : 'ok');
+          showScreen('costs');
+          if (window.setCostsTab) window.setCostsTab('rechnungen');
+          openInvoiceDetail(inv.id);
+          return;
+        }
+        txns = transactionsFromLines(lines);
+      } else {
+        txns = await parseFile(file); // CSV (DKB-Umsätze)
+      }
       if (!txns.length) {
         toast('Keine Buchungen erkannt. Format prüfen?', 'err');
         busy = false; parsed = null; renderImport(); return;

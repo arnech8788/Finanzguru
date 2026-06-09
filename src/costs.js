@@ -1,7 +1,15 @@
 // Kostenrechnung: monatliche Vertragskosten gegen erwartete Einnahmen (Marge).
+// Zusätzlich Unter-Tab „Rechnungen" (importierte Telekom-Rechnungen + Abgleich).
 import { ICO, escapeHtml, toast } from './ui.js';
 import { state, save } from './main.js';
 import { fmtEUR, parseEUR } from './money.js';
+import { renderInvoicesInto } from './invoices.js';
+
+let costsTab = 'kosten'; // 'kosten' | 'rechnungen'
+export function setCostsTab(tab) {
+  costsTab = tab === 'rechnungen' ? 'rechnungen' : 'kosten';
+  renderCosts();
+}
 
 const FIELDS = [
   { key: 'grundgebuehr', label: 'Grundgebühr (gesamt)' },
@@ -50,9 +58,24 @@ export function renderCosts() {
   const cost = planCost();
   const margin = income - cost;
 
+  const nInv = (state.invoices || []).length;
+  const seg = `<div class="seg">
+    <button class="seg-btn ${costsTab === 'kosten' ? 'active' : ''}" onclick="setCostsTab('kosten')">Kosten</button>
+    <button class="seg-btn ${costsTab === 'rechnungen' ? 'active' : ''}" onclick="setCostsTab('rechnungen')">Rechnungen${nInv ? ` (${nInv})` : ''}</button>
+  </div>`;
+
+  if (costsTab === 'rechnungen') {
+    el.innerHTML = `
+      <header class="topbar"><h1>Kosten</h1></header>
+      <div class="pad">${seg}<div id="costs-invoices"></div></div>`;
+    renderInvoicesInto(document.getElementById('costs-invoices'));
+    return;
+  }
+
   el.innerHTML = `
     <header class="topbar"><h1>Kosten</h1></header>
     <div class="pad">
+      ${seg}
       <div class="tiles">
         <div class="tile"><span class="tile-k">Kosten/Monat</span><span class="tile-v">${fmtEUR(cost)}</span></div>
         <div class="tile tile-ok"><span class="tile-k">Einnahmen/Monat</span><span class="tile-v">${fmtEUR(income)}</span></div>
@@ -84,4 +107,4 @@ export function renderCosts() {
     </div>`;
 }
 
-Object.assign(window, { renderCosts, updateCost });
+Object.assign(window, { renderCosts, updateCost, setCostsTab });
