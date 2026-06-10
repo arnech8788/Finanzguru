@@ -44,8 +44,25 @@ export function renderImport() {
         <span class="muted small">DKB-Auszug (PDF/CSV) oder Telekom-Rechnung (PDF) · wird automatisch erkannt · bleibt lokal</span>
       </button>
 
+      ${latestInvoiceLine()}
       ${parsed ? resultsHtml() : hintHtml()}
     </div>`;
+}
+
+// Zeigt bis zu welchem Monat bereits Telekom-Rechnungen importiert wurden
+// (höchster Leistungsmonat + Rechnungsdatum dieser Rechnung). Leer, wenn keine.
+function latestInvoiceLine() {
+  const list = state.invoices || [];
+  if (!list.length) return '';
+  const latest = list.reduce((a, b) =>
+    String(b.month || '').localeCompare(String(a.month || '')) > 0 ? b : a);
+  const dateStr = latest.date ? ` · Rechnungsdatum ${escapeHtml(fmtDate(latest.date))}` : '';
+  return `<div class="card">
+    <div class="cost-row static"><span>Rechnungen importiert bis</span>
+      <b>${escapeHtml(monthLabel(latest.month))}</b></div>
+    <p class="muted small" style="margin:6px 0 0">${ICO.info} ${list.length} Rechnung(en) gesamt${dateStr}.
+      Verwaltung unter <b>Kosten → Rechnungen</b>.</p>
+  </div>`;
 }
 
 function hintHtml() {
