@@ -44,9 +44,30 @@ export function renderImport() {
         <span class="muted small">DKB-Auszug (PDF/CSV) oder Telekom-Rechnung (PDF) · wird automatisch erkannt · bleibt lokal</span>
       </button>
 
+      ${lastDkbBookingLine()}
       ${latestInvoiceLine()}
       ${parsed ? resultsHtml() : hintHtml()}
     </div>`;
+}
+
+// Zeigt das Datum der zuletzt aus einem DKB-Auszug gebuchten Buchung (max
+// receivedDate über Ledger-Einträge MIT matchedTxnId = aus Import übernommen;
+// manuelle Einträge zählen nicht), damit klar ist, ab wann der nächste Auszug
+// importiert werden muss. Leer, wenn noch nichts importiert/gebucht wurde.
+function lastDkbBookingLine() {
+  let latest = '';
+  for (const months of Object.values(state.ledger || {})) {
+    for (const e of Object.values(months || {})) {
+      if (e && e.matchedTxnId && e.receivedDate && e.receivedDate > latest) latest = e.receivedDate;
+    }
+  }
+  if (!latest) return '';
+  return `<div class="card">
+    <div class="cost-row static"><span>DKB-Eingänge importiert bis</span>
+      <b>${escapeHtml(fmtDate(latest))}</b></div>
+    <p class="muted small" style="margin:6px 0 0">${ICO.info} Letzte aus einem Kontoauszug übernommene Buchung –
+      ab hier mit dem nächsten Auszug weitermachen.</p>
+  </div>`;
 }
 
 // Zeigt bis zu welchem Monat bereits Telekom-Rechnungen importiert wurden
