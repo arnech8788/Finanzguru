@@ -19,7 +19,7 @@ async function hashKey(endpoint) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin');
     if (request.method === 'OPTIONS') return new Response(null, { headers: cors(origin) });
     const url = new URL(request.url);
@@ -41,6 +41,27 @@ export default {
       let body; try { body = await request.json(); } catch { body = {}; }
       if (body.endpoint) await env.SUBS.delete(await hashKey(body.endpoint));
       return json({ ok: true }, 200, origin);
+    }
+
+    // Einmaliger Test-Push nach delaySec Sekunden – zum Prüfen bei geschlossener App.
+    // Sendet direkt (ohne KV/Cron), abgekoppelt von den echten Erinnerungen.
+    if (request.method === 'POST' && url.pathname === '/test') {
+      let body;
+      try { body = await request.json(); } catch { return json({ error: 'bad json' }, 400, origin); }
+      const { subscription, delaySec } = body || {};
+      if (!subscription || !subscription.endpoint) return json({ error: 'no subscription' }, 400, origin);
+      const vapid = { subject: env.VAPID_SUBJECT || 'mailto:admin@example.com', publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY };
+      if (!vapid.publicKey || !vapid.privateKey) return json({ error: 'vapid missing' }, 500, origin);
+      const sec = Math.max(0, Math.min(30, Math.round(Number(delaySec) || 0)));
+      ctx.waitUntil((async () => {
+        if (sec > 0) await new Promise((r) => setTimeout(r, sec * 1000));
+        try {
+          const message = { data: JSON.stringify({ title: 'Finanzguru – Test', body: `Test-Push nach ${sec}s – Push funktioniert bei geschlossener App ✅`, tag: 'push-test', data: { url: '/' } }), options: { ttl: 60 } };
+          const payload = await buildPushPayload(message, subscription, vapid);
+          await fetch(subscription.endpoint, payload);
+        } catch (e) { /* still: Test, kein Retry */ }
+      })());
+      return json({ ok: true, delaySec: sec }, 200, origin);
     }
 
     return new Response('Finanzguru push relay', { headers: cors(origin) });

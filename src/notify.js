@@ -146,6 +146,31 @@ export async function sendTestNotification() {
   toast('Testbenachrichtigung gesendet', 'ok');
 }
 
+// Echter Test-Push über den Worker nach delaySec Sekunden – funktioniert auch bei
+// geschlossener App (Browser-Push-Dienst stellt zu). Erfordert konfigurierten Server.
+export async function sendPushTest(delaySec) {
+  const n = state.notifications;
+  const url = n && n.server && n.server.url;
+  if (!url) { toast('Erst Push-Server unter „Erweitert" konfigurieren', 'err'); return; }
+  if (typeof Notification === 'undefined') { toast('Push hier nicht unterstützt', 'err'); return; }
+  if (Notification.permission !== 'granted') {
+    const p = await Notification.requestPermission();
+    if (p !== 'granted') { toast('Keine Erlaubnis für Benachrichtigungen', 'err'); return; }
+  }
+  if (!currentSub) { if (!(await subscribePush())) { toast('Push-Abo fehlgeschlagen (VAPID-Key korrekt?)', 'err'); return; } }
+  const sec = Math.max(3, Math.min(30, parseInt(delaySec, 10) || 15));
+  try {
+    const res = await fetch(url.replace(/\/$/, '') + '/test', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ subscription: currentSub, delaySec: sec })
+    });
+    if (!res.ok) throw new Error('http ' + res.status);
+    toast(`Test-Push in ${sec}s geplant – App jetzt schließen 📲`, 'ok');
+  } catch (e) {
+    toast('Test-Push fehlgeschlagen – Server erreichbar?', 'err');
+  }
+}
+
 // Beim App-Start: Abo sicherstellen, Fälliges lokal zeigen, Server-Sync anstoßen.
 export async function initNotify() {
   ensureNotifDefaults(state);
@@ -161,4 +186,4 @@ export async function initNotify() {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkLocalReminders(); requestSync(); } });
 }
 
-Object.assign(window, { toggleNotifications, disableNotifications, setNotif, sendTestNotification });
+Object.assign(window, { toggleNotifications, disableNotifications, setNotif, sendTestNotification, sendPushTest });
