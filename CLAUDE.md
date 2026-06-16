@@ -26,9 +26,14 @@ Update-Toast via `registerSW({ onNeedRefresh })` in `src/main.js`. PDF-Parsing n
 
 ## Deployment
 
-Push auf `main` → GitHub Action (`.github/workflows/pages.yml`) baut mit Vite und
-deployt `dist/` nach GitHub Pages. Custom Domain via `public/CNAME`
-(`finanzguru.arne-chudobba.de`) – landet im Build-Output `dist/CNAME`. Base ist `/`.
+Push auf `main` → GitHub Action (`.github/workflows/firebase-hosting-merge.yml`) baut mit
+Vite und deployt `dist/` auf den **Live-Channel** von **Firebase Hosting**. Jeder Pull
+Request erzeugt zusätzlich über `firebase-hosting-pull-request.yml` einen temporären
+**Preview-Channel** mit eigener URL (als PR-Kommentar). Hosting-Konfiguration in
+`firebase.json` (SPA-Rewrite auf `/index.html`, Cache-Header: `index.html`/Service-Worker
+`no-cache`, gehashte `/assets/**` `immutable`), Projekt-ID in `.firebaserc`. Custom Domain
+(`finanzguru.arne-chudobba.de`) wird in der Firebase-Console verbunden. Base ist `/`.
+CI-Login per Service-Account im GitHub-Secret `FIREBASE_SERVICE_ACCOUNT`.
 
 ## Architektur
 
@@ -71,7 +76,7 @@ Statische Hülle (`index.html`) + `styles.css`, App-Logik in ES-Modulen unter `s
 
 ## Datenschutz (wichtig)
 
-GitHub Pages ist **öffentlich**. Es dürfen **niemals** echte Personendaten (Namen, IBANs,
+Das Hosting (Firebase Hosting) ist **öffentlich**. Es dürfen **niemals** echte Personendaten (Namen, IBANs,
 Telefon-/SIM-Nummern, Kontodaten, Adressen) in committete Dateien gelangen – auch nicht in
 `src/data/*` oder Test-Fixtures. Alle echten Daten leben nur im `localStorage`. Die App
 überträgt nichts an Server; PDF/CSV werden ausschließlich im Browser ausgewertet.

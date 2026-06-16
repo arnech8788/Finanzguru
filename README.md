@@ -19,7 +19,7 @@ MultiSIM) zu verfolgen und mit dem **DKB-Kontoauszug** abzugleichen.
 **Alle Daten bleiben lokal** im Browser (`localStorage`). Es gibt keinen Server und keinen
 Cloud-Sync; hochgeladene PDFs/CSVs werden nur im Browser ausgewertet, nichts wird übertragen.
 
-Da GitHub Pages **öffentlich** ist, sind **keine echten Daten** im Repository enthalten.
+Da das Hosting **öffentlich** ist, sind **keine echten Daten** im Repository enthalten.
 Empfehlung: Repository auf **privat** stellen. Eine Sicherung exportierst du über
 *Mehr → Daten → Sicherung exportieren* und bewahrst sie sicher auf.
 

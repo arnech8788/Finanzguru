@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  // GitHub Pages serves from the domain root (CNAME), so base '/' is correct.
+  // Firebase Hosting serves from the domain root, so base '/' is correct.
   base: '/',
   plugins: [
     VitePWA({

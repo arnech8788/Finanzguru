@@ -1,0 +1,40 @@
+# Baut bei jedem Pull Request einen Vorschau-Build und deployt ihn auf einen
+# temporaeren Preview-Channel. Die Vorschau-URL wird automatisch als PR-Kommentar gepostet.
+name: Deploy preview to Firebase Hosting (PR)
+
+on:
+  pull_request:
+    branches: ["main"]
+
+# Preview-Channels nur fuer PRs aus demselben Repo (Secrets sind in Forks nicht verfuegbar).
+permissions:
+  checks: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  build-preview:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy preview to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: your-firebase-project-id
