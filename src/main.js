@@ -139,8 +139,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const CHANGELOG = [
+  ['1.6.0', 'Push-Test: Unter „Mehr → Erinnerungen → Erweitert" kannst du jetzt einen echten Test-Push über den Push-Server auslösen – mit einstellbarer Verzögerung in Sekunden. So lässt sich prüfen, ob Benachrichtigungen auch bei geschlossener App ankommen (App nach dem Auslösen schließen oder Bildschirm sperren). Voraussetzung: konfigurierter Push-Server.'],
   ['1.5.0', 'Telekom-Rechnungen: Lade eine Mobilfunk-Rechnung (PDF) einfach im Import-Tab – sie wird automatisch erkannt und unter „Kosten → Rechnungen" gespeichert. Dort siehst du alle Rechnungen und einen Abgleich pro Person: Was kostet die Karte laut Rechnung vs. was hat die Person zurückgezahlt (über-/unterdeckt). Positionen ohne passende Karte lassen sich einmalig zuordnen (wird für künftige Rechnungen gelernt). Rechnungen bleiben rein lokal und ändern das Soll/Ist-Buch nicht.'],
   ['1.4.0', 'Erinnerungen: Die App erinnert an den monatlichen DKB-Export (z. B. am 5.), an überfällige monatliche Zahlungen und rechtzeitig vor vierteljährlichen/jährlichen Zahlungen (Vorlauf einstellbar). Lokale Hinweise funktionieren sofort; für echte Push bei geschlossener App lässt sich optional ein kleiner Push-Server (siehe server/) hinterlegen. Alles unter „Mehr → Erinnerungen" konfigurierbar.'],
   ['1.3.0', 'Gelernte Zuordnungen sind jetzt einseh- und löschbar: In der Personen-Ansicht zeigt der Bereich „Gelernt für den Abgleich" IBANs, Namensvarianten und PayPal-/Anonym-Hinweise – einzeln entfernbar oder komplett zurücksetzbar. Im Import lässt sich ein (z. B. falsch gelernter) Vorschlag per „✗" verwerfen und der Eingang landet wieder unter „nicht zugeordnet".'],
@@ -184,6 +185,11 @@ function notifCard() {
           <label class="fld"><span>Server-URL</span><input type="url" value="${escapeHtml((n.server && n.server.url) || '')}" placeholder="https://…workers.dev" onchange="setNotif('server.url', this.value.trim())"></label>
           <label class="fld"><span>VAPID Public Key</span><input type="text" value="${escapeHtml((n.server && n.server.vapidPublicKey) || '')}" placeholder="BNc…" onchange="setNotif('server.vapidPublicKey', this.value.trim())"></label>
           <div class="muted small">Status: ${serverOn ? (n.push && n.push.subscribed ? 'abonniert ✓' : 'konfiguriert, noch nicht abonniert') : 'kein Server (nur lokal)'}</div>
+          ${serverOn ? `
+          <label class="cost-row" style="margin-top:8px"><span>Test-Push in (Sek.)</span>
+            <input type="number" id="pushTestSec" min="3" max="30" value="15"></label>
+          <button class="row-btn" onclick="sendPushTest(document.getElementById('pushTestSec').value)"><span class="row-ic">${ICO.clock}</span><span>Test-Push planen &amp; App schließen</span><span class="row-arrow">Push</span></button>
+          <p class="muted small" style="margin:6px 0 0">Plant einen echten Push über den Worker. App danach schließen/Bildschirm sperren – die Benachrichtigung kommt nach Ablauf der Zeit.</p>` : ''}
         </details>
       </div>` : `<p class="muted small" style="margin:6px 0 0">Erinnert dich an den DKB-Export, an überfällige monatliche Zahlungen und rechtzeitig vor vierteljährlichen/jährlichen Zahlungen.</p>`}
     </div>`;
