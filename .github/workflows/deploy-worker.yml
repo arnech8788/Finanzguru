@@ -1,0 +1,38 @@
+# Deployt den Cloudflare-Push-Worker automatisch, sobald sich in server/ etwas aendert.
+# Ersetzt das manuelle `wrangler deploy`. Benoetigt zwei GitHub-Secrets:
+#   CLOUDFLARE_API_TOKEN  – Token mit Recht "Workers Scripts: Edit" (+ KV, falls noetig)
+#   CLOUDFLARE_ACCOUNT_ID – die Account-ID aus dem Cloudflare-Dashboard
+# Der private VAPID-Key bleibt als Worker-Secret in Cloudflare und wird hier NICHT gebraucht.
+name: Deploy Push-Worker (Cloudflare)
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "server/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install worker dependencies
+        working-directory: server
+        run: npm install
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server
+          command: deploy
