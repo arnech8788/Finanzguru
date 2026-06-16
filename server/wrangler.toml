@@ -10,11 +10,11 @@ crons = ["*/15 * * * *"]
 # KV-Namespace für die Abos (ID nach `wrangler kv namespace create SUBS` eintragen).
 [[kv_namespaces]]
 binding = "SUBS"
-id = "REPLACE_WITH_KV_ID"
+id = "8e0a20fa89ac4d4db138eff854901b3c"
 
 [vars]
-VAPID_SUBJECT = "mailto:du@example.com"
+VAPID_SUBJECT = "mailto:info@arne-chudobba.de"
 # Öffentlicher VAPID-Key (nicht geheim; identisch mit dem in der App eingetragenen).
-VAPID_PUBLIC_KEY = "REPLACE_WITH_VAPID_PUBLIC_KEY"
+VAPID_PUBLIC_KEY = "BIp4m1w4OIVYx3_yF_7eTWZGvjU3bhp5vvdCMpb7YaQmcdaMWoBuSQXyKZJEYQq9WZiRmjYqVu4DF-Wxy_qePLE"
 # Privater Key NICHT hier eintragen, sondern als Secret:
 #   npx wrangler secret put VAPID_PRIVATE_KEY
