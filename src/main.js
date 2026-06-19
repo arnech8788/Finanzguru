@@ -139,8 +139,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const CHANGELOG = [
+  ['1.7.0', 'Karten-Details-Import & manuelle Zahlungen: Unter „Mehr → Daten → Karten-Details importieren" kannst du deine Karten-Tabelle (aus Excel kopieren und einfügen) einlesen – Auftragsnummer, SIM-Nr, Telefonnummer, Besitzer, Ausweisdokument, Verwendung, Aktiv seit, Laufzeit bis und Notizen werden den passenden Personen/Karten zugeordnet (Zuordnung über den Besitzer; leere Felder werden befüllt, vorhandene bleiben erhalten). Außerdem lassen sich im Import-Tab PayPal-/Bar-/sonstige Zahlungen manuell buchen und einer Person/einem Monat zuordnen.'],
   ['1.6.0', 'Push-Test: Unter „Mehr → Erinnerungen → Erweitert" kannst du jetzt einen echten Test-Push über den Push-Server auslösen – mit einstellbarer Verzögerung in Sekunden. So lässt sich prüfen, ob Benachrichtigungen auch bei geschlossener App ankommen (App nach dem Auslösen schließen oder Bildschirm sperren). Voraussetzung: konfigurierter Push-Server.'],
   ['1.5.0', 'Telekom-Rechnungen: Lade eine Mobilfunk-Rechnung (PDF) einfach im Import-Tab – sie wird automatisch erkannt und unter „Kosten → Rechnungen" gespeichert. Dort siehst du alle Rechnungen und einen Abgleich pro Person: Was kostet die Karte laut Rechnung vs. was hat die Person zurückgezahlt (über-/unterdeckt). Positionen ohne passende Karte lassen sich einmalig zuordnen (wird für künftige Rechnungen gelernt). Rechnungen bleiben rein lokal und ändern das Soll/Ist-Buch nicht.'],
   ['1.4.0', 'Erinnerungen: Die App erinnert an den monatlichen DKB-Export (z. B. am 5.), an überfällige monatliche Zahlungen und rechtzeitig vor vierteljährlichen/jährlichen Zahlungen (Vorlauf einstellbar). Lokale Hinweise funktionieren sofort; für echte Push bei geschlossener App lässt sich optional ein kleiner Push-Server (siehe server/) hinterlegen. Alles unter „Mehr → Erinnerungen" konfigurierbar.'],
@@ -219,6 +220,7 @@ export function renderMore() {
         <button class="row-btn" onclick="exportBackup()"><span class="row-ic">${ICO.download}</span><span>Sicherung exportieren (JSON)</span><span class="row-arrow">Download</span></button>
         <button class="row-btn" onclick="importData()"><span class="row-ic">${ICO.upload}</span><span>Daten importieren (JSON / CSV)</span><span class="row-arrow">Datei</span></button>
         <button class="row-btn" onclick="importTablePdf()"><span class="row-ic">${ICO.card}</span><span>Mobilfunk-Tabelle (PDF) importieren</span><span class="row-arrow">PDF</span></button>
+        <button class="row-btn" onclick="openCardImport()"><span class="row-ic">${ICO.sim}</span><span>Karten-Details importieren (Tabelle einfügen)</span><span class="row-arrow">Einfügen</span></button>
       </div>
 
       <div class="card">

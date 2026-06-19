@@ -2,7 +2,7 @@
 // Eingänge buchen und unbekannte Eingänge manuell zuordnen.
 import { ICO, escapeHtml, openModal, closeModal, toast } from './ui.js';
 import { state, save, rerenderDashboard, showScreen } from './main.js';
-import { fmtEUR, fmtDate, monthLabel, currentMonth, shiftMonth } from './money.js';
+import { fmtEUR, parseEUR, fmtDate, monthLabel, currentMonth, shiftMonth, todayISO } from './money.js';
 import { expectedForMonth } from './data/schedules.js';
 import { isSharedIban, normalizeIban, normalizeName, looksAnonymous } from './match.js';
 import { matchMonth } from './match.js';
@@ -44,10 +44,70 @@ export function renderImport() {
         <span class="muted small">DKB-Auszug (PDF/CSV) oder Telekom-Rechnung (PDF) · wird automatisch erkannt · bleibt lokal</span>
       </button>
 
+      <button class="btn btn-ghost full" style="margin-top:10px" onclick="openManualPayment()">${ICO.plus} PayPal-/manuelle Zahlung buchen</button>
+
       ${lastDkbBookingLine()}
       ${latestInvoiceLine()}
       ${parsed ? resultsHtml() : hintHtml()}
     </div>`;
+}
+
+// ---- Manuelle Zahlung (z. B. PayPal) buchen & zuordnen --------------------
+export function openManualPayment() {
+  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  if (!people.length) { toast('Erst Personen anlegen', 'err'); return; }
+  openModal('Zahlung manuell buchen', `
+    <form id="manualPayForm" onsubmit="return false">
+      <label class="fld"><span>Person</span>
+        <select name="person">${people.map((p) => `<option value="${p.id}">${escapeHtml(p.name || '(ohne Name)')}</option>`).join('')}</select></label>
+      <div class="fld-row">
+        <label class="fld"><span>Monat</span><input name="month" type="month" value="${escapeHtml(importMonth)}"></label>
+        <label class="fld"><span>Betrag (€)</span><input name="amount" type="text" inputmode="decimal" placeholder="z. B. 7,00"></label>
+      </div>
+      <div class="fld-row">
+        <label class="fld"><span>Zahlart</span>
+          <select name="method">
+            <option value="PayPal">PayPal</option>
+            <option value="Überweisung">Überweisung</option>
+            <option value="Bar">Bar</option>
+            <option value="Netflix-Guthaben">Netflix-Guthaben</option>
+            <option value="Sonstige">Sonstige</option>
+          </select></label>
+        <label class="fld"><span>am</span><input name="date" type="date" value="${escapeHtml(todayISO())}"></label>
+      </div>
+      <label class="fld"><span>Notiz (optional)</span><input name="note" type="text" placeholder="optional"></label>
+      <p class="muted small" style="margin:2px 0 0">Wird zum bereits erhaltenen Betrag dieses Monats addiert.</p>
+      <div class="modal-actions" style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="button" class="btn btn-primary" onclick="saveManualPayment()">Buchen</button>
+      </div>
+    </form>`);
+}
+
+export function saveManualPayment() {
+  const form = document.getElementById('manualPayForm');
+  if (!form) return;
+  const fd = new FormData(form);
+  const personId = (fd.get('person') || '').toString();
+  const month = (fd.get('month') || '').toString() || importMonth;
+  const amount = parseEUR((fd.get('amount') || '').toString());
+  if (!personId) { toast('Bitte eine Person wählen', 'err'); return; }
+  if (!Number.isFinite(amount) || amount <= 0) { toast('Bitte einen gültigen Betrag eingeben', 'err'); return; }
+  const date = (fd.get('date') || '').toString();
+  const method = (fd.get('method') || 'PayPal').toString();
+  const extra = (fd.get('note') || '').toString().trim();
+  const prev = getReceived(personId, month) || {};
+  const newReceived = (Number(prev.received) || 0) + amount;
+  const noteBits = [prev.note, `${method} ${fmtEUR(amount)}`, extra].filter(Boolean);
+  setReceived(personId, month, {
+    received: newReceived,
+    receivedDate: (date && (!prev.receivedDate || date > prev.receivedDate)) ? date : (prev.receivedDate || date),
+    note: noteBits.join(' · ')
+  });
+  save();
+  closeModal();
+  afterChange();
+  toast('Zahlung gebucht', 'ok');
 }
 
 // Zeigt das Datum der zuletzt aus einem DKB-Auszug gebuchten Buchung (max
@@ -332,5 +392,6 @@ function afterChange() {
 
 Object.assign(window, {
   renderImport, setImportMonth, pickImportFile, bookAssignment, bookAll,
-  rejectAssignment, assignUnmatched, assignUnmatchedTo
+  rejectAssignment, assignUnmatched, assignUnmatchedTo,
+  openManualPayment, saveManualPayment
 });
