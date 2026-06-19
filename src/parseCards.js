@@ -75,35 +75,46 @@ export function parseCardsTable(text) {
   return cards;
 }
 
-// Karten in Kopien der vorhandenen Personen einpflegen (Zuordnung über Besitzer).
-// Befüllt leere Platzhalter-Karten, ergänzt fehlende; per SIM-Nr idempotent.
-export function buildCardImport(cards, existingPeople = []) {
-  const people = existingPeople.map((p) => JSON.parse(JSON.stringify(p)));
+// Karten nach Besitzer gruppieren und je Gruppe eine passende vorhandene Person
+// vorschlagen (über Name/Alias). Liefert die Gruppen für die Vorschau/Zuordnung.
+export function planCardImport(cards, existingPeople = []) {
   const byNorm = new Map();
-  for (const p of people) {
-    byNorm.set(normalizeName(p.name), p);
-    for (const a of (p.nameAliases || [])) byNorm.set(normalizeName(a), p);
+  for (const p of existingPeople) {
+    byNorm.set(normalizeName(p.name), p.id);
+    for (const a of (p.nameAliases || [])) byNorm.set(normalizeName(a), p.id);
   }
-  let seq = 0;
-  const uid = () => 'p' + Date.now().toString(36) + (seq++).toString(36);
-
-  // Nach Besitzer gruppieren (Reihenfolge der Tabelle erhalten).
-  const groups = new Map();
+  const groups = [];
+  const seen = new Map();
   for (const card of cards) {
     const nn = normalizeName(card.owner);
     if (!nn) continue; // ohne Besitzer nicht zuordenbar
-    if (!groups.has(nn)) groups.set(nn, { owner: card.owner, cards: [] });
-    groups.get(nn).cards.push(card);
+    let g = seen.get(nn);
+    if (!g) { g = { owner: card.owner, normOwner: nn, suggestedId: byNorm.get(nn) || '', cards: [] }; seen.set(nn, g); groups.push(g); }
+    g.cards.push(card);
   }
+  return groups;
+}
+
+// Gruppen mit gewählter Zuordnung (assignments: normOwner -> personId | '__new__')
+// in Kopien der vorhandenen Personen einpflegen. Befüllt leere Platzhalter-Karten,
+// ergänzt fehlende; per SIM-Nr idempotent. Fehlt eine Zuordnung, gilt der Vorschlag.
+export function buildCardImport(groups, assignments = {}, existingPeople = []) {
+  const people = existingPeople.map((p) => JSON.parse(JSON.stringify(p)));
+  const byId = new Map(people.map((p) => [p.id, p]));
+  let seq = 0;
+  const uid = () => 'p' + Date.now().toString(36) + (seq++).toString(36);
 
   const summary = [];
-  for (const [nn, g] of groups) {
-    let person = byNorm.get(nn);
-    const isNew = !person;
-    if (isNew) {
+  for (const g of groups) {
+    const choice = assignments[g.normOwner] || g.suggestedId || '__new__';
+    let person, isNew = false;
+    if (choice === '__new__' || !byId.has(choice)) {
       person = { id: uid(), name: g.owner, ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', expectedAmount: 0, cards: [], notes: 'aus Karten-Tabelle' };
       people.push(person);
-      byNorm.set(nn, person);
+      byId.set(person.id, person);
+      isNew = true;
+    } else {
+      person = byId.get(choice);
     }
     if (!Array.isArray(person.cards)) person.cards = [];
 
@@ -125,7 +136,7 @@ export function buildCardImport(cards, existingPeople = []) {
         added++;
       }
     }
-    summary.push({ name: person.name, isNew, filled, added });
+    summary.push({ name: person.name, owner: g.owner, isNew, filled, added });
   }
   summary.sort((a, b) => (b.isNew - a.isNew) || a.name.localeCompare(b.name, 'de'));
   return { people, summary };
