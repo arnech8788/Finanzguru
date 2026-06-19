@@ -4,7 +4,7 @@ import { state, save, applyImportedState } from './main.js';
 import { parseEUR, fmtEUR } from './money.js';
 import { scheduleLabel } from './data/schedules.js';
 import { parseMobilfunkPdf, buildImportFromLog } from './parseTable.js';
-import { parseCardsTable, buildCardImport } from './parseCards.js';
+import { parseCardsTable, planCardImport, buildCardImport } from './parseCards.js';
 
 export function exportBackup() {
   const data = JSON.stringify({
@@ -187,32 +187,45 @@ export function previewCardImport() {
   const ta = document.getElementById('cardImportText');
   const cards = parseCardsTable(ta ? ta.value : '');
   if (!cards.length) { toast('Keine Karten erkannt. Tabelle inkl. Kopfzeile einfügen?', 'err'); return; }
-  const built = buildCardImport(cards, state.people);
-  pendingCardImport = built;
-  const neu = built.summary.filter((s) => s.isNew).length;
-  const rows = built.summary.map((s) => `
-    <div class="imp-row">
-      <div class="dash-meta"><b>${escapeHtml(s.name)}</b>
-        <small>${s.filled} Karte(n) befüllt${s.added ? ` · ${s.added} neu` : ''}</small></div>
-      <span class="status-badge" style="--sc:${s.isNew ? '#2fb86b' : '#2d9cdb'}">${s.isNew ? 'neue Person' : 'Update'}</span>
-    </div>`).join('');
+  const groups = planCardImport(cards, state.people);
+  if (!groups.length) { toast('Keine Karten mit Besitzer erkannt', 'err'); return; }
+  pendingCardImport = { groups };
+
+  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  const rows = groups.map((g, i) => {
+    const opts = `<option value="__new__" ${g.suggestedId ? '' : 'selected'}>➕ Neue Person „${escapeHtml(g.owner)}" anlegen</option>` +
+      people.map((p) => `<option value="${p.id}" ${g.suggestedId === p.id ? 'selected' : ''}>${escapeHtml(p.name || '(ohne Name)')}</option>`).join('');
+    return `<div class="imp-row" style="display:block">
+      <div class="dash-meta" style="margin-bottom:4px"><b>${escapeHtml(g.owner)}</b>
+        <small>${g.cards.length} Karte(n)${g.suggestedId ? '' : ' · keine passende Person erkannt'}</small></div>
+      <select id="cardAssign_${i}" style="width:100%">${opts}</select>
+    </div>`;
+  }).join('');
+
   updateModalBody(`
-    <p class="small" style="margin:0 0 8px">${cards.length} Karten erkannt für ${built.summary.length} Person(en)${neu ? ` (${neu} neu angelegt)` : ''}.
-      Monatliche Beträge/Kosten aus der Tabelle werden bewusst nicht übernommen – nur die Karten-Stammdaten.</p>
+    <p class="small" style="margin:0 0 8px">${cards.length} Karten erkannt für ${groups.length} Besitzer.
+      Wähle pro Besitzer die Zielperson (oder „Neue Person anlegen"). Monatliche Beträge werden nicht übernommen – nur Karten-Stammdaten.</p>
     <div class="imp-list" style="margin:12px 0;max-height:50vh;overflow:auto">${rows}</div>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="openCardImport()">Zurück</button>
-      <button class="btn btn-primary" onclick="applyCardImport()">${built.summary.length} übernehmen</button>
-    </div>`, 'Karten-Import – Vorschau');
+      <button class="btn btn-primary" onclick="applyCardImport()">Übernehmen</button>
+    </div>`, 'Karten-Import – Zuordnung');
 }
 
 export function applyCardImport() {
-  const built = pendingCardImport;
+  const pend = pendingCardImport;
   pendingCardImport = null;
-  if (!built) { closeModal(); return; }
+  if (!pend) { closeModal(); return; }
+  const assignments = {};
+  pend.groups.forEach((g, i) => {
+    const sel = document.getElementById('cardAssign_' + i);
+    assignments[g.normOwner] = sel ? sel.value : (g.suggestedId || '__new__');
+  });
+  const built = buildCardImport(pend.groups, assignments, state.people);
   applyImportedState({ people: built.people });
   closeModal();
-  toast('Karten-Details importiert', 'ok');
+  const neu = built.summary.filter((s) => s.isNew).length;
+  toast(`Karten-Details importiert${neu ? ` · ${neu} neue Person(en)` : ''}`, 'ok');
 }
 
 Object.assign(window, {
