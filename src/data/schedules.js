@@ -7,7 +7,8 @@ export const SCHEDULES = [
   { id: 'monthly', label: 'Monatlich', period: 1 },
   { id: 'bimonthly', label: 'Alle 2 Monate', period: 2 },
   { id: 'quarterly', label: 'Vierteljährlich (im Voraus)', period: 3 },
-  { id: 'yearly', label: 'Jährlich', period: 12 }
+  { id: 'yearly', label: 'Jährlich', period: 12 },
+  { id: 'none', label: 'Keine Rückzahlung (zahlt selbst)', period: 0 }
 ];
 
 export function scheduleLabel(id) {
