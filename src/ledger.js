@@ -26,15 +26,25 @@ export function getReceived(personId, month) {
   return (b && b[month]) || null;
 }
 
-export function setReceived(personId, month, { received, receivedDate, matchedTxnId, note } = {}) {
+export function setReceived(personId, month, { received, receivedDate, matchedTxnId, note, extraDue, extraNote } = {}) {
   const b = bucket(personId);
   const entry = b[month] || {};
   if (received != null) entry.received = Number(received) || 0;
   if (receivedDate !== undefined) entry.receivedDate = receivedDate || '';
   if (matchedTxnId !== undefined) entry.matchedTxnId = matchedTxnId || '';
   if (note !== undefined) entry.note = note || '';
+  if (extraDue !== undefined) entry.extraDue = Number(extraDue) || 0;
+  if (extraNote !== undefined) entry.extraNote = extraNote || '';
   entry.updated = Date.now();
   b[month] = entry;
+}
+
+// Effektives Soll des Monats = Rhythmus-Soll + einmaliger Zusatz-Soll (z. B.
+// Bereitstellung/Versand/zusätzliche Karten), damit eine Sammelzahlung korrekt zählt.
+export function effectiveExpected(person, month) {
+  const base = expectedForMonth(person, month);
+  const e = getReceived(person.id, month);
+  return base + (e && Number(e.extraDue) ? Number(e.extraDue) : 0);
 }
 
 export function addReceived(personId, month, amount, receivedDate, matchedTxnId) {
@@ -50,7 +60,7 @@ export function clearReceived(personId, month) {
 
 // ---- Status ---------------------------------------------------------------
 export function statusFor(person, month) {
-  const exp = expectedForMonth(person, month);
+  const exp = effectiveExpected(person, month);
   const entry = getReceived(person.id, month);
   const rec = entry ? Number(entry.received) || 0 : 0;
   if (exp > 0) {
@@ -129,20 +139,30 @@ function emptyLedger() {
 export function openLedgerCell(personId, month) {
   const person = state.people.find((p) => p.id === personId);
   if (!person) return;
-  const exp = expectedForMonth(person, month);
+  const base = expectedForMonth(person, month);
   const entry = getReceived(personId, month) || {};
+  const extra = Number(entry.extraDue) || 0;
+  const target = base + extra;
   const st = statusFor(person, month);
   openModal(`${person.name} · ${monthLabel(month)}`, `
     <form id="cellForm" onsubmit="return false">
       <div class="cell-info">
-        <div><span class="muted small">Soll (${escapeHtml(scheduleLabel(person.schedule))})</span><b>${exp > 0 ? fmtEUR(exp) : '– (vorausbezahlt/kein Fälligkeitsmonat)'}</b></div>
+        <div><span class="muted small">Soll (${escapeHtml(scheduleLabel(person.schedule))})</span><b>${target > 0 ? fmtEUR(target) : '– (vorausbezahlt/kein Fälligkeitsmonat)'}${extra > 0 ? ` <span class="muted small">(inkl. ${fmtEUR(extra)} einmalig)</span>` : ''}</b></div>
         <div><span class="muted small">Status</span><b style="color:${STATUS[st].color}">${STATUS[st].label}</b></div>
       </div>
       <div class="fld-row">
-        <label class="fld"><span>Erhalten (€)</span><input name="received" type="text" inputmode="decimal" value="${entry.received != null ? String(entry.received).replace('.', ',') : ''}" placeholder="${exp > 0 ? String(exp).replace('.', ',') : '0'}"></label>
+        <label class="fld"><span>Erhalten (€)</span><input name="received" type="text" inputmode="decimal" value="${entry.received != null ? String(entry.received).replace('.', ',') : ''}" placeholder="${target > 0 ? String(target).replace('.', ',') : '0'}"></label>
         <label class="fld"><span>am</span><input name="date" type="date" value="${escapeHtml(entry.receivedDate || '')}"></label>
       </div>
       <label class="fld"><span>Notiz (optional)</span><input name="note" type="text" value="${escapeHtml(entry.note || '')}" placeholder="z. B. per PayPal"></label>
+      <details class="advanced"${extra > 0 ? ' open' : ''}>
+        <summary>Einmaliger Zusatz-Soll (z. B. Bereitstellung, Versand, neue Karten)</summary>
+        <div class="fld-row" style="margin-top:8px">
+          <label class="fld"><span>Zusatz-Soll (€)</span><input name="extraDue" type="text" inputmode="decimal" value="${extra ? String(extra).replace('.', ',') : ''}" placeholder="z. B. 80"></label>
+          <label class="fld"><span>Wofür?</span><input name="extraNote" type="text" value="${escapeHtml(entry.extraNote || '')}" placeholder="z. B. 3 neue SIM: Bereitstellung + Versand"></label>
+        </div>
+        <p class="muted small" style="margin:6px 0 0">Wird einmalig zum Soll dieses Monats addiert. Den dauerhaft höheren Monatsbeitrag stellst du in „Personen" ein.</p>
+      </details>
       <div class="modal-actions">
         ${entry.received != null ? `<button type="button" class="btn btn-danger" onclick="clearLedgerCell('${personId}','${month}')">${ICO.trash} Leeren</button>` : `<button type="button" class="btn btn-ghost" onclick="markCellPaid('${personId}','${month}')">${ICO.check} Soll erhalten</button>`}
         <button type="button" class="btn btn-primary" onclick="saveLedgerCell('${personId}','${month}')">Speichern</button>
@@ -153,7 +173,7 @@ export function openLedgerCell(personId, month) {
 export function markCellPaid(personId, month) {
   const person = state.people.find((p) => p.id === personId);
   if (!person) return;
-  const exp = expectedForMonth(person, month);
+  const exp = effectiveExpected(person, month);
   setReceived(personId, month, { received: exp, receivedDate: todayISO() });
   save();
   closeModal();
@@ -168,10 +188,13 @@ export function saveLedgerCell(personId, month) {
   const fd = new FormData(form);
   const recRaw = (fd.get('received') || '').toString().trim();
   const received = recRaw ? parseEUR(recRaw) : 0;
+  const extraRaw = (fd.get('extraDue') || '').toString().trim();
   setReceived(personId, month, {
     received,
     receivedDate: (fd.get('date') || '').toString(),
-    note: (fd.get('note') || '').toString().trim()
+    note: (fd.get('note') || '').toString().trim(),
+    extraDue: extraRaw ? parseEUR(extraRaw) : 0,
+    extraNote: (fd.get('extraNote') || '').toString().trim()
   });
   save();
   closeModal();

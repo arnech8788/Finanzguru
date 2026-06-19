@@ -285,13 +285,24 @@ function cardEditor(c, i, opts) {
     </div>
     <div class="fld-row">
       <label class="fld"><span>Aktiv seit</span><input name="card_${i}_activeSince" type="date" value="${escapeHtml(c.activeSince || '')}"></label>
-      <label class="fld"><span>Laufzeit bis</span><input name="card_${i}_runtimeUntil" type="text" value="${escapeHtml(c.runtimeUntil || '')}" placeholder="z. B. 28.12.2027"></label>
+      <label class="fld"><span>Laufzeit bis</span>
+        <span style="display:flex;gap:6px">
+          <input name="card_${i}_runtimeUntil" type="text" style="flex:1" value="${escapeHtml(c.runtimeUntil || '')}" placeholder="z. B. 28.12.2027 / monatlich kündbar">
+          <input type="date" aria-label="Datum wählen" style="flex:0 0 auto;width:46px;padding:0 2px" onchange="setCardRuntime(${i}, this.value)">
+        </span></label>
     </div>
     <div class="fld-row">
       <label class="fld"><span>Ausweisdokument</span><input name="card_${i}_idDoc" type="text" value="${escapeHtml(c.idDoc || '')}"></label>
       <label class="fld"><span>Notiz</span><input name="card_${i}_notes" type="text" value="${escapeHtml(c.notes || '')}"></label>
     </div>
   </div>`;
+}
+
+// Datumsauswahl -> deutsches Datum ins Freitextfeld „Laufzeit bis" schreiben.
+export function setCardRuntime(i, iso) {
+  if (!iso) return;
+  const inp = document.querySelector(`[name="card_${i}_runtimeUntil"]`);
+  if (inp) inp.value = fmtDate(iso);
 }
 
 export function addCard() {
@@ -340,5 +351,5 @@ export function closePersonModal() { draft = null; closeModal(); }
 Object.assign(window, {
   renderPeople, setPeopleSearch, newPerson, editPerson, openPerson,
   addCard, removeCard, savePerson, deletePerson, closePersonModal,
-  removePersonIban, removeNameAlias, removePayAlias, resetLearned
+  removePersonIban, removeNameAlias, removePayAlias, resetLearned, setCardRuntime
 });

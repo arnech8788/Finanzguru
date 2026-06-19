@@ -2,8 +2,8 @@
 import { ICO, escapeHtml } from './ui.js';
 import { state } from './main.js';
 import { fmtEUR, monthLabel, currentMonth, shiftMonth } from './money.js';
-import { expectedForMonth, scheduleLabel } from './data/schedules.js';
-import { statusFor, getReceived, STATUS, openLedgerCell, markCellPaid } from './ledger.js';
+import { scheduleLabel } from './data/schedules.js';
+import { statusFor, getReceived, STATUS, openLedgerCell, markCellPaid, effectiveExpected } from './ledger.js';
 
 let dashMonth = currentMonth();
 let onlyOpen = false;
@@ -28,7 +28,7 @@ export function renderDashboard() {
   let sollSum = 0, istSum = 0, offenSum = 0, offenCount = 0, paidCount = 0;
   const rows = [];
   for (const person of people) {
-    const exp = expectedForMonth(person, month);
+    const exp = effectiveExpected(person, month);
     const entry = getReceived(person.id, month);
     const rec = entry ? Number(entry.received) || 0 : 0;
     const st = statusFor(person, month);
