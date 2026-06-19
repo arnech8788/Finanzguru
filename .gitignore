@@ -7,6 +7,8 @@ dist/
 # Roh-Exporte und Backups bleiben lokal beim Nutzer.
 *.pdf
 *.csv
+*.xlsx
+*.xls
 *-backup*.json
 *-bootstrap*.json
 kontoauszug*

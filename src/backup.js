@@ -1,9 +1,10 @@
 // Daten sichern/wiederherstellen (JSON) + Bootstrap-Import (JSON oder CSV).
-import { ICO, escapeHtml, openModal, closeModal, confirmDialog, toast } from './ui.js';
+import { ICO, escapeHtml, openModal, closeModal, updateModalBody, confirmDialog, toast } from './ui.js';
 import { state, save, applyImportedState } from './main.js';
 import { parseEUR, fmtEUR } from './money.js';
 import { scheduleLabel } from './data/schedules.js';
 import { parseMobilfunkPdf, buildImportFromLog } from './parseTable.js';
+import { parseCardsTable, buildCardImport } from './parseCards.js';
 
 export function exportBackup() {
   const data = JSON.stringify({
@@ -165,4 +166,56 @@ export function applyTableImport() {
   toast(`${built.summary.length} Personen importiert`, 'ok');
 }
 
-Object.assign(window, { exportBackup, importData, importTablePdf, applyTableImport });
+// ---- Karten-Details importieren (transponierte Tabelle einfügen) ----------
+let pendingCardImport = null;
+
+export function openCardImport() {
+  pendingCardImport = null;
+  openModal('Karten-Details importieren', `
+    <p class="muted small" style="margin:0 0 10px">Kopiere deine Karten-Tabelle aus Excel (mit Kopfzeile) und füge sie hier ein.
+      Spalten = Karten, Zeilen = Felder (Auftragsnummer, SIM-Nr, Telefonnummer, Besitzer, Ausweisdokument,
+      Verwendung, Aktiv seit, Laufzeit bis, Notizen …). Die Zuordnung erfolgt über den <b>Besitzer</b>.</p>
+    <textarea id="cardImportText" rows="8" class="fld" style="width:100%;font-family:monospace;font-size:12px" placeholder="Hier die kopierte Tabelle einfügen…"></textarea>
+    <p class="muted small" style="margin:8px 0 0">${ICO.shield} Bleibt lokal – nichts wird hochgeladen. Leere Kartenfelder werden befüllt; vorhandene Werte bleiben erhalten.</p>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+      <button class="btn btn-primary" onclick="previewCardImport()">Auswerten</button>
+    </div>`, { onClose: () => { pendingCardImport = null; } });
+}
+
+export function previewCardImport() {
+  const ta = document.getElementById('cardImportText');
+  const cards = parseCardsTable(ta ? ta.value : '');
+  if (!cards.length) { toast('Keine Karten erkannt. Tabelle inkl. Kopfzeile einfügen?', 'err'); return; }
+  const built = buildCardImport(cards, state.people);
+  pendingCardImport = built;
+  const neu = built.summary.filter((s) => s.isNew).length;
+  const rows = built.summary.map((s) => `
+    <div class="imp-row">
+      <div class="dash-meta"><b>${escapeHtml(s.name)}</b>
+        <small>${s.filled} Karte(n) befüllt${s.added ? ` · ${s.added} neu` : ''}</small></div>
+      <span class="status-badge" style="--sc:${s.isNew ? '#2fb86b' : '#2d9cdb'}">${s.isNew ? 'neue Person' : 'Update'}</span>
+    </div>`).join('');
+  updateModalBody(`
+    <p class="small" style="margin:0 0 8px">${cards.length} Karten erkannt für ${built.summary.length} Person(en)${neu ? ` (${neu} neu angelegt)` : ''}.
+      Monatliche Beträge/Kosten aus der Tabelle werden bewusst nicht übernommen – nur die Karten-Stammdaten.</p>
+    <div class="imp-list" style="margin:12px 0;max-height:50vh;overflow:auto">${rows}</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="openCardImport()">Zurück</button>
+      <button class="btn btn-primary" onclick="applyCardImport()">${built.summary.length} übernehmen</button>
+    </div>`, 'Karten-Import – Vorschau');
+}
+
+export function applyCardImport() {
+  const built = pendingCardImport;
+  pendingCardImport = null;
+  if (!built) { closeModal(); return; }
+  applyImportedState({ people: built.people });
+  closeModal();
+  toast('Karten-Details importiert', 'ok');
+}
+
+Object.assign(window, {
+  exportBackup, importData, importTablePdf, applyTableImport,
+  openCardImport, previewCardImport, applyCardImport
+});
