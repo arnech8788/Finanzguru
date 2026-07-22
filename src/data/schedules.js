@@ -47,6 +47,8 @@ export function monthlyAmount(person, ym) {
 
 // Soll-Betrag, der in diesem Monat fällig ist (0 in „Voraus-abgedeckten" Monaten).
 export function expectedForMonth(person, ym) {
+  // Vor dem Beitritt der Person wird nichts erwartet.
+  if (person.startMonth && String(ym) < String(person.startMonth)) return 0;
   const amt = monthlyAmount(person, ym);
   if (!amt) return 0;
   const p = schedulePeriod(person.schedule);
