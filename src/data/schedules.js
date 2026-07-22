@@ -34,9 +34,20 @@ export function isDueMonth(person, ym) {
   return governingDueMonth(person, ym) === ym;
 }
 
+// Monatlicher Anteil, der in `ym` gilt: Basisbetrag (expectedAmount) plus spätere
+// Änderungen (amountChanges = [{from:'YYYY-MM', amount}]) ab dem jeweiligen Monat.
+export function monthlyAmount(person, ym) {
+  let amt = Number(person.expectedAmount) || 0;
+  const changes = (person.amountChanges || [])
+    .filter((c) => c && c.from)
+    .sort((a, b) => String(a.from).localeCompare(String(b.from)));
+  for (const c of changes) { if (String(c.from) <= String(ym)) amt = Number(c.amount) || 0; }
+  return amt;
+}
+
 // Soll-Betrag, der in diesem Monat fällig ist (0 in „Voraus-abgedeckten" Monaten).
 export function expectedForMonth(person, ym) {
-  const amt = Number(person.expectedAmount) || 0;
+  const amt = monthlyAmount(person, ym);
   if (!amt) return 0;
   const p = schedulePeriod(person.schedule);
   return isDueMonth(person, ym) ? amt * p : 0;
