@@ -3,7 +3,7 @@ import { ICO, escapeHtml, highlight, openModal, closeModal, updateModalBody, con
 import { state, save, rerenderDashboard } from './main.js';
 import { fmtEUR, parseEUR, fmtDate, currentMonth } from './money.js';
 import { PAYMENT_METHODS, paymentMethodLabel } from './data/paymentMethods.js';
-import { SCHEDULES, scheduleLabel, expectedForMonth } from './data/schedules.js';
+import { SCHEDULES, scheduleLabel, expectedForMonth, monthlyAmount } from './data/schedules.js';
 import { CARD_TYPES, cardTypeLabel, SIM_KINDS, simKindLabel } from './data/cardTypes.js';
 import { statusFor, STATUS, renderLedger } from './ledger.js';
 
@@ -17,7 +17,7 @@ function newCard() {
   return { type: 'multisim', phone: '', simNr: '', auftragsNr: '', owner: '', simKind: 'sim', activeSince: '', runtimeUntil: '', idDoc: '', notes: '' };
 }
 function blankPerson() {
-  return { id: uid(), name: '', ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', expectedAmount: 0, cards: [], notes: '' };
+  return { id: uid(), name: '', ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', expectedAmount: 0, amountChanges: [], cards: [], notes: '' };
 }
 
 export function setPeopleSearch(q) {
@@ -60,7 +60,7 @@ function personCard(p, q, month) {
   const cardSummary = cards.length
     ? cards.map((c) => cardTypeLabel(c.type)).join(', ')
     : 'keine Karte';
-  const amt = Number(p.expectedAmount) || 0;
+  const amt = monthlyAmount(p, currentMonth());
   return `
     <div class="person-card" onclick="openPerson('${p.id}')" style="--sc:${meta.color}">
       <span class="dash-dot" title="${escapeHtml(meta.label)}"></span>
@@ -90,7 +90,7 @@ function refreshPersonView(id) {
 }
 
 function personViewHtml(p) {
-  const amt = Number(p.expectedAmount) || 0;
+  const amt = monthlyAmount(p, currentMonth());
   const exp = expectedForMonth(p, currentMonth());
   const cards = (p.cards || []);
   return `
@@ -199,6 +199,7 @@ export function editPerson(id) {
   draft = JSON.parse(JSON.stringify(p));
   if (!Array.isArray(draft.ibans)) draft.ibans = [];
   if (!Array.isArray(draft.cards)) draft.cards = [];
+  if (!Array.isArray(draft.amountChanges)) draft.amountChanges = [];
   openModal('Person bearbeiten', editorHtml());
 }
 
@@ -214,6 +215,10 @@ function readDraft() {
   draft.dayOfMonth = parseInt((fd.get('dayOfMonth') || '1').toString(), 10) || 1;
   draft.anchorMonth = (fd.get('anchorMonth') || '').toString();
   draft.expectedAmount = parseEUR((fd.get('expectedAmount') || '0').toString()) || 0;
+  (draft.amountChanges || []).forEach((c, i) => {
+    c.from = (fd.get(`ac_${i}_from`) || '').toString();
+    c.amount = parseEUR((fd.get(`ac_${i}_amount`) || '0').toString()) || 0;
+  });
   draft.notes = (fd.get('notes') || '').toString();
   (draft.cards || []).forEach((c, i) => {
     const g = (k) => (fd.get(`card_${i}_${k}`) || '').toString();
@@ -250,6 +255,7 @@ function editorHtml() {
       </div>
       <label class="fld"><span>Zyklus-Start (nur bei vierteljährlich/jährlich)</span>
         <input name="anchorMonth" type="month" value="${escapeHtml(p.anchorMonth || '')}"></label>
+      ${amountChangesHtml(p)}
       <label class="fld"><span>IBAN(s) – eine pro Zeile (für Abgleich)</span>
         <textarea name="ibans" rows="2" placeholder="DE.. (mehrere möglich)">${escapeHtml((p.ibans || []).join('\n'))}</textarea></label>
       <label class="fld"><span>Notiz</span>
@@ -266,6 +272,24 @@ function editorHtml() {
         <button type="button" class="btn btn-primary" onclick="savePerson()">Speichern</button>
       </div>
     </form>`;
+}
+
+// Optionale zeitlich gestaffelte Beitragsänderungen (ab Monat gilt neuer Betrag).
+function amountChangesHtml(p) {
+  const rows = (p.amountChanges || []).map((c, i) => `
+    <div class="fld-row">
+      <label class="fld"><span>ab Monat</span><input name="ac_${i}_from" type="month" value="${escapeHtml(c.from || '')}"></label>
+      <label class="fld"><span>neuer Anteil (€)</span><input name="ac_${i}_amount" type="text" inputmode="decimal" value="${c.amount != null && c.amount !== '' ? String(c.amount).replace('.', ',') : ''}"></label>
+      <button type="button" class="icon-btn danger" onclick="removeAmountChange(${i})" aria-label="Änderung entfernen">${ICO.trash}</button>
+    </div>`).join('');
+  return `<details class="advanced"${(p.amountChanges || []).length ? ' open' : ''}>
+    <summary>Beitragsänderungen (ab Monat)</summary>
+    <p class="muted small" style="margin:8px 0">Ändert sich der Anteil ab einem bestimmten Monat (z. B. zusätzliche SIM-Karten), hier eintragen.
+      Frühere Monate bleiben beim bisherigen Betrag – das Soll/Ist wird <b>nicht rückwirkend</b> verändert.
+      Der „Monatliche Anteil" oben ist der Ausgangsbetrag.</p>
+    ${rows || '<p class="muted small">Keine Änderung – der Anteil oben gilt durchgehend.</p>'}
+    <button type="button" class="btn btn-ghost btn-sm" onclick="addAmountChange()">${ICO.plus} Änderung ab Monat</button>
+  </details>`;
 }
 
 function cardEditor(c, i, opts) {
@@ -305,6 +329,18 @@ export function setCardRuntime(i, iso) {
   if (inp) inp.value = fmtDate(iso);
 }
 
+export function addAmountChange() {
+  readDraft();
+  if (!Array.isArray(draft.amountChanges)) draft.amountChanges = [];
+  draft.amountChanges.push({ from: '', amount: draft.expectedAmount || 0 });
+  updateModalBody(editorHtml());
+}
+export function removeAmountChange(i) {
+  readDraft();
+  draft.amountChanges.splice(i, 1);
+  updateModalBody(editorHtml());
+}
+
 export function addCard() {
   readDraft();
   draft.cards.push(newCard());
@@ -319,6 +355,8 @@ export function removeCard(i) {
 export function savePerson() {
   readDraft();
   if (!draft.name) { toast('Bitte einen Namen eingeben', 'err'); return; }
+  // Unvollständige Beitragsänderungen (ohne Monat) verwerfen.
+  draft.amountChanges = (draft.amountChanges || []).filter((c) => c.from);
   const existing = state.people.find((x) => x.id === draft.id);
   if (existing) Object.assign(existing, draft);
   else state.people.push(draft);
@@ -351,5 +389,6 @@ export function closePersonModal() { draft = null; closeModal(); }
 Object.assign(window, {
   renderPeople, setPeopleSearch, newPerson, editPerson, openPerson,
   addCard, removeCard, savePerson, deletePerson, closePersonModal,
-  removePersonIban, removeNameAlias, removePayAlias, resetLearned, setCardRuntime
+  removePersonIban, removeNameAlias, removePayAlias, resetLearned, setCardRuntime,
+  addAmountChange, removeAmountChange
 });
