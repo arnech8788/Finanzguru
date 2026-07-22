@@ -1,7 +1,7 @@
 // Personen/Beitragszahler: anlegen, bearbeiten, Karten/SIM-Inventar pflegen.
 import { ICO, escapeHtml, highlight, openModal, closeModal, updateModalBody, confirmDialog, toast } from './ui.js';
 import { state, save, rerenderDashboard } from './main.js';
-import { fmtEUR, parseEUR, fmtDate, currentMonth } from './money.js';
+import { fmtEUR, parseEUR, fmtDate, currentMonth, monthLabel } from './money.js';
 import { PAYMENT_METHODS, paymentMethodLabel } from './data/paymentMethods.js';
 import { SCHEDULES, scheduleLabel, expectedForMonth, monthlyAmount } from './data/schedules.js';
 import { CARD_TYPES, cardTypeLabel, SIM_KINDS, simKindLabel } from './data/cardTypes.js';
@@ -17,7 +17,7 @@ function newCard() {
   return { type: 'multisim', phone: '', simNr: '', auftragsNr: '', owner: '', simKind: 'sim', activeSince: '', runtimeUntil: '', idDoc: '', notes: '' };
 }
 function blankPerson() {
-  return { id: uid(), name: '', ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', expectedAmount: 0, amountChanges: [], cards: [], notes: '' };
+  return { id: uid(), name: '', ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', startMonth: '', expectedAmount: 0, amountChanges: [], cards: [], notes: '' };
 }
 
 export function setPeopleSearch(q) {
@@ -101,6 +101,7 @@ function personViewHtml(p) {
         <div><span class="muted small">Zahlart</span><b>${escapeHtml(paymentMethodLabel(p.paymentMethod))}</b></div>
         <div><span class="muted small">Soll diesen Monat</span><b>${exp > 0 ? fmtEUR(exp) : '–'}</b></div>
       </div>
+      ${p.startMonth ? `<p class="muted small" style="margin:8px 0 0">Beitrag ab ${escapeHtml(monthLabel(p.startMonth))}</p>` : ''}
       ${p.notes ? `<div class="pv-block"><span class="muted small">Notiz</span><p style="white-space:pre-wrap;margin:4px 0 0">${escapeHtml(p.notes)}</p></div>` : ''}
       <div class="pv-block">
         <span class="muted small">Karten / SIM (${cards.length})</span>
@@ -214,6 +215,7 @@ function readDraft() {
   draft.schedule = (fd.get('schedule') || 'monthly').toString();
   draft.dayOfMonth = parseInt((fd.get('dayOfMonth') || '1').toString(), 10) || 1;
   draft.anchorMonth = (fd.get('anchorMonth') || '').toString();
+  draft.startMonth = (fd.get('startMonth') || '').toString();
   draft.expectedAmount = parseEUR((fd.get('expectedAmount') || '0').toString()) || 0;
   (draft.amountChanges || []).forEach((c, i) => {
     c.from = (fd.get(`ac_${i}_from`) || '').toString();
@@ -253,8 +255,12 @@ function editorHtml() {
         <label class="fld"><span>Rhythmus</span><select name="schedule">${opts(SCHEDULES, p.schedule)}</select></label>
         <label class="fld"><span>Zahlart</span><select name="paymentMethod">${opts(PAYMENT_METHODS, p.paymentMethod)}</select></label>
       </div>
-      <label class="fld"><span>Zyklus-Start (nur bei vierteljährlich/jährlich)</span>
-        <input name="anchorMonth" type="month" value="${escapeHtml(p.anchorMonth || '')}"></label>
+      <div class="fld-row">
+        <label class="fld"><span>Beitrag ab Monat (optional)</span>
+          <input name="startMonth" type="month" value="${escapeHtml(p.startMonth || '')}"></label>
+        <label class="fld"><span>Zyklus-Start (viertel-/jährlich)</span>
+          <input name="anchorMonth" type="month" value="${escapeHtml(p.anchorMonth || '')}"></label>
+      </div>
       ${amountChangesHtml(p)}
       <label class="fld"><span>IBAN(s) – eine pro Zeile (für Abgleich)</span>
         <textarea name="ibans" rows="2" placeholder="DE.. (mehrere möglich)">${escapeHtml((p.ibans || []).join('\n'))}</textarea></label>
