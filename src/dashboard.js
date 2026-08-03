@@ -7,8 +7,11 @@ import { statusFor, getReceived, STATUS, openLedgerCell, markCellPaid, effective
 
 let dashMonth = currentMonth();
 let onlyOpen = false;
+let dashCategory = '';   // '' = alle Kategorien
+let lastCats = [];       // im Render gefüllt, für index-basierte Auswahl
 
 const ORDER = { open: 0, partial: 1, none: 2, advance: 3, paid: 4 };
+const catOf = (p) => p.category || 'Ohne Kategorie';
 
 export function setDashMonth(delta) {
   dashMonth = shiftMonth(dashMonth, delta);
@@ -18,12 +21,21 @@ export function setDashFilter(open) {
   onlyOpen = open;
   renderDashboard();
 }
+export function setDashCategory(i) {
+  dashCategory = (i < 0 || i >= lastCats.length) ? '' : lastCats[i];
+  renderDashboard();
+}
 
 export function renderDashboard() {
   const el = document.getElementById('screen-dashboard');
   if (!el) return;
   const month = dashMonth;
-  const people = [...state.people];
+  // Kategorien aus allen Personen (für die Filter-Chips); 'Ohne Kategorie' ans Ende.
+  const cats = [...new Set(state.people.map(catOf))]
+    .sort((a, b) => (a === 'Ohne Kategorie' ? 1 : b === 'Ohne Kategorie' ? -1 : a.localeCompare(b, 'de')));
+  lastCats = cats;
+  if (dashCategory && !cats.includes(dashCategory)) dashCategory = '';
+  const people = dashCategory ? state.people.filter((p) => catOf(p) === dashCategory) : [...state.people];
 
   let sollSum = 0, istSum = 0, offenSum = 0, offenCount = 0, paidCount = 0;
   const rows = [];
@@ -49,6 +61,11 @@ export function renderDashboard() {
         <span class="month-label">${escapeHtml(monthLabel(month))}</span>
         <button class="icon-btn" onclick="setDashMonth(1)" aria-label="Folgemonat">${ICO.chevR}</button>
       </div>
+
+      ${cats.length > 1 ? `<div class="cat-chips" style="margin-bottom:10px">
+        <button class="catchip ${!dashCategory ? 'catchip-active' : ''}" onclick="setDashCategory(-1)">Alle Kategorien</button>
+        ${cats.map((c, i) => `<button class="catchip ${dashCategory === c ? 'catchip-active' : ''}" onclick="setDashCategory(${i})">${escapeHtml(c)}</button>`).join('')}
+      </div>` : ''}
 
       <div class="tiles">
         <div class="tile"><span class="tile-k">Soll</span><span class="tile-v">${fmtEUR(sollSum)}</span></div>
@@ -98,4 +115,4 @@ function emptyDash() {
 // Erlaubt anderen Modulen, die Übersicht neu zu zeichnen, wenn sie sichtbar ist.
 export function dashboardMonth() { return dashMonth; }
 
-Object.assign(window, { renderDashboard, setDashMonth, setDashFilter });
+Object.assign(window, { renderDashboard, setDashMonth, setDashFilter, setDashCategory });

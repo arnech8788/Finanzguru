@@ -139,8 +139,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
 const CHANGELOG = [
+  ['1.12.0', 'Übersicht nach Kategorie: Wenn du mehrere Kategorien nutzt (z. B. Mobilfunk, Spotify, Netflix), erscheinen oben in der Übersicht Filter-Chips. Damit siehst du Soll/Erhalten/Offen und die Liste wahlweise für „Alle Kategorien" oder eine einzelne Kategorie – jeweils mit eigenen Summen.'],
   ['1.11.0', 'Andere wiederkehrende Einnahmen tracken: Im Import kannst du einen nicht zugeordneten DKB-Eingang jetzt per „+ Einnahme" als regelmäßige Einnahme anlegen (z. B. Spotify, Netflix) – mit editierbarem Namen, Kategorie, Betrag und Rhythmus. Die Zahlung wird gebucht und die IBAN gelernt, damit künftige Monate automatisch geprüft werden. Personen haben zudem ein optionales Feld „Kategorie" (Mobilfunk/Spotify/Netflix/…); Karten/SIM bleiben optional.'],
   ['1.10.0', 'Beitritt später möglich: Bei einer Person lässt sich jetzt „Beitrag ab Monat" setzen. Für Monate davor wird nichts erwartet – sie erscheinen nicht mehr fälschlich als „offen" (rot/Minus), sondern als „nicht fällig". Ideal für Personen, die erst später dazugekommen sind.'],
   ['1.9.0', 'Zeitlich gestaffelte Beiträge: Der monatliche Anteil einer Person lässt sich jetzt „ab einem Monat" ändern (z. B. wenn zusätzliche SIM-Karten dazukommen). Im Personen-Editor unter „Beitragsänderungen (ab Monat)" den neuen Betrag ab dem passenden Monat eintragen – frühere Monate bleiben beim bisherigen Betrag, das Soll/Ist wird nicht mehr rückwirkend verändert (kein fälschliches „teilweise" mehr bei bereits bezahlten Monaten).'],
