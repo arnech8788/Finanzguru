@@ -139,8 +139,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.11.0';
 const CHANGELOG = [
+  ['1.11.0', 'Andere wiederkehrende Einnahmen tracken: Im Import kannst du einen nicht zugeordneten DKB-Eingang jetzt per „+ Einnahme" als regelmäßige Einnahme anlegen (z. B. Spotify, Netflix) – mit editierbarem Namen, Kategorie, Betrag und Rhythmus. Die Zahlung wird gebucht und die IBAN gelernt, damit künftige Monate automatisch geprüft werden. Personen haben zudem ein optionales Feld „Kategorie" (Mobilfunk/Spotify/Netflix/…); Karten/SIM bleiben optional.'],
   ['1.10.0', 'Beitritt später möglich: Bei einer Person lässt sich jetzt „Beitrag ab Monat" setzen. Für Monate davor wird nichts erwartet – sie erscheinen nicht mehr fälschlich als „offen" (rot/Minus), sondern als „nicht fällig". Ideal für Personen, die erst später dazugekommen sind.'],
   ['1.9.0', 'Zeitlich gestaffelte Beiträge: Der monatliche Anteil einer Person lässt sich jetzt „ab einem Monat" ändern (z. B. wenn zusätzliche SIM-Karten dazukommen). Im Personen-Editor unter „Beitragsänderungen (ab Monat)" den neuen Betrag ab dem passenden Monat eintragen – frühere Monate bleiben beim bisherigen Betrag, das Soll/Ist wird nicht mehr rückwirkend verändert (kein fälschliches „teilweise" mehr bei bereits bezahlten Monaten).'],
   ['1.8.0', 'Mehr Flexibilität: (1) Neuer Rhythmus „Keine Rückzahlung (zahlt selbst)" – für dich selbst als Person, ohne dass ein Soll entsteht oder etwas als offen erscheint. (2) Bei „Laufzeit bis" lässt sich jetzt zusätzlich ein Datum per Auswahl einfügen (Freitext wie „monatlich kündbar" bleibt möglich). (3) Im Zahlungs-Editor (Soll/Ist-Zelle) gibt es einen einmaligen „Zusatz-Soll" für Sonderkosten wie Bereitstellung, Versand oder zusätzliche SIM-Karten – so wird eine Sammelzahlung korrekt als bezahlt gewertet und nicht als Vorauszahlung verbucht. Den dauerhaft höheren Monatsbeitrag stellst du weiterhin direkt bei der Person ein.'],

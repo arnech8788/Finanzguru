@@ -17,7 +17,7 @@ function newCard() {
   return { type: 'multisim', phone: '', simNr: '', auftragsNr: '', owner: '', simKind: 'sim', activeSince: '', runtimeUntil: '', idDoc: '', notes: '' };
 }
 function blankPerson() {
-  return { id: uid(), name: '', ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', startMonth: '', expectedAmount: 0, amountChanges: [], cards: [], notes: '' };
+  return { id: uid(), name: '', category: '', ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', startMonth: '', expectedAmount: 0, amountChanges: [], cards: [], notes: '' };
 }
 
 export function setPeopleSearch(q) {
@@ -59,7 +59,7 @@ function personCard(p, q, month) {
   const cards = (p.cards || []);
   const cardSummary = cards.length
     ? cards.map((c) => cardTypeLabel(c.type)).join(', ')
-    : 'keine Karte';
+    : (p.category || 'keine Karte');
   const amt = monthlyAmount(p, currentMonth());
   return `
     <div class="person-card" onclick="openPerson('${p.id}')" style="--sc:${meta.color}">
@@ -101,6 +101,7 @@ function personViewHtml(p) {
         <div><span class="muted small">Zahlart</span><b>${escapeHtml(paymentMethodLabel(p.paymentMethod))}</b></div>
         <div><span class="muted small">Soll diesen Monat</span><b>${exp > 0 ? fmtEUR(exp) : '–'}</b></div>
       </div>
+      ${p.category ? `<p class="muted small" style="margin:8px 0 0">Kategorie: ${escapeHtml(p.category)}</p>` : ''}
       ${p.startMonth ? `<p class="muted small" style="margin:8px 0 0">Beitrag ab ${escapeHtml(monthLabel(p.startMonth))}</p>` : ''}
       ${p.notes ? `<div class="pv-block"><span class="muted small">Notiz</span><p style="white-space:pre-wrap;margin:4px 0 0">${escapeHtml(p.notes)}</p></div>` : ''}
       <div class="pv-block">
@@ -210,6 +211,7 @@ function readDraft() {
   if (!form || !draft) return;
   const fd = new FormData(form);
   draft.name = (fd.get('name') || '').toString().trim();
+  draft.category = (fd.get('category') || '').toString().trim();
   draft.ibans = (fd.get('ibans') || '').toString().split(/\n+/).map((s) => s.trim()).filter(Boolean);
   draft.paymentMethod = (fd.get('paymentMethod') || 'ueberweisung').toString();
   draft.schedule = (fd.get('schedule') || 'monthly').toString();
@@ -245,6 +247,9 @@ function editorHtml() {
     <form id="personForm" onsubmit="return false">
       <label class="fld"><span>Name</span>
         <input name="name" type="text" value="${escapeHtml(p.name || '')}" placeholder="Vor- und Nachname" required></label>
+      <label class="fld"><span>Kategorie (optional)</span>
+        <input name="category" type="text" list="catList" value="${escapeHtml(p.category || '')}" placeholder="z. B. Mobilfunk, Spotify, Netflix"></label>
+      <datalist id="catList"><option value="Mobilfunk"></option><option value="Spotify"></option><option value="Netflix"></option><option value="Sonstiges"></option></datalist>
       <div class="fld-row">
         <label class="fld"><span>Monatlicher Anteil (€)</span>
           <input name="expectedAmount" type="text" inputmode="decimal" value="${p.expectedAmount ? String(p.expectedAmount).replace('.', ',') : ''}" placeholder="z. B. 7"></label>
