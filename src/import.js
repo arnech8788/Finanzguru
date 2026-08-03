@@ -3,7 +3,7 @@
 import { ICO, escapeHtml, openModal, closeModal, toast } from './ui.js';
 import { state, save, rerenderDashboard, showScreen } from './main.js';
 import { fmtEUR, parseEUR, fmtDate, monthLabel, currentMonth, shiftMonth, todayISO } from './money.js';
-import { expectedForMonth } from './data/schedules.js';
+import { expectedForMonth, SCHEDULES } from './data/schedules.js';
 import { isSharedIban, normalizeIban, normalizeName, looksAnonymous } from './match.js';
 import { matchMonth } from './match.js';
 import { parseFile, extractPdfLines, transactionsFromLines } from './parse.js';
@@ -232,7 +232,10 @@ function unmatchedRow(txn) {
     <span class="dash-dot" style="--sc:#5b6270"></span>
     <div class="dash-meta"><b>${fmtEUR(txn.amount)}</b>
       <small>${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''}</small></div>
-    <div class="imp-right"><button class="btn btn-sm btn-ghost" onclick="assignUnmatched('${txn.id}')">Zuordnen</button></div>
+    <div class="imp-right" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+      <button class="btn btn-sm btn-ghost" onclick="assignUnmatched('${txn.id}')">Zuordnen</button>
+      <button class="btn btn-sm btn-ghost" onclick="declareIncome('${txn.id}')" title="Als regelmäßige Einnahme anlegen">+ Einnahme</button>
+    </div>
   </div>`;
 }
 
@@ -384,6 +387,59 @@ export function assignUnmatchedTo(txnId, personId) {
   toast('Zugeordnet', 'ok');
 }
 
+// Einen (nicht zugeordneten) Eingang als neue, wiederkehrende Einnahme deklarieren
+// (z. B. Spotify/Netflix). Legt eine Person ohne Karten an, bucht die Zahlung und
+// lernt die IBAN, damit künftige Monate automatisch geprüft werden.
+export function declareIncome(txnId) {
+  const txn = (result && result.unmatched.find((t) => t.id === txnId)) || parsed.txns.find((t) => t.id === txnId);
+  if (!txn) return;
+  const nm = txn.name || txn.purpose || '';
+  openModal('Als regelmäßige Einnahme anlegen', `
+    <p class="muted small" style="margin:0 0 12px">${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''} · <b>${fmtEUR(txn.amount)}</b></p>
+    <form id="incomeForm" onsubmit="return false">
+      <label class="fld"><span>Name / Bezeichnung</span><input name="name" type="text" value="${escapeHtml(nm)}" placeholder="z. B. Spotify – Max"></label>
+      <div class="fld-row">
+        <label class="fld"><span>Kategorie</span><input name="category" type="text" list="incCatList" value="Spotify" placeholder="z. B. Spotify"></label>
+        <label class="fld"><span>Erwartet (€)</span><input name="amount" type="text" inputmode="decimal" value="${String(txn.amount).replace('.', ',')}"></label>
+      </div>
+      <datalist id="incCatList"><option value="Spotify"></option><option value="Netflix"></option><option value="Mobilfunk"></option><option value="Sonstiges"></option></datalist>
+      <label class="fld"><span>Rhythmus</span><select name="schedule">${SCHEDULES.filter((s) => s.id !== 'none').map((s) => `<option value="${s.id}" ${s.id === 'monthly' ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select></label>
+      <p class="muted small" style="margin:2px 0 0">Wird als Einnahme ab ${escapeHtml(monthLabel(importMonth))} angelegt, die Zahlung diesem Monat gutgeschrieben und die IBAN für künftige Monate gelernt. Karten/SIM sind nicht nötig.</p>
+      <div class="modal-actions" style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="button" class="btn btn-primary" onclick="saveIncome('${txn.id}')">Anlegen &amp; buchen</button>
+      </div>
+    </form>`);
+}
+
+export function saveIncome(txnId) {
+  const form = document.getElementById('incomeForm');
+  const txn = parsed && parsed.txns.find((t) => t.id === txnId);
+  if (!form || !txn) return;
+  const fd = new FormData(form);
+  const name = (fd.get('name') || '').toString().trim();
+  if (!name) { toast('Bitte einen Namen angeben', 'err'); return; }
+  const amount = parseEUR((fd.get('amount') || '0').toString()) || 0;
+  const category = (fd.get('category') || '').toString().trim();
+  const schedule = (fd.get('schedule') || 'monthly').toString();
+  const iban = normalizeIban(txn.iban);
+  const person = {
+    id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name, category, ibans: (iban && !isSharedIban(iban)) ? [txn.iban] : [],
+    paymentMethod: 'ueberweisung', schedule, dayOfMonth: 1, anchorMonth: '',
+    startMonth: importMonth, expectedAmount: amount, amountChanges: [], cards: [], notes: ''
+  };
+  // Anonyme Sammel-IBAN (PayPal/Netflix) als Hinweis lernen statt als feste IBAN.
+  if (iban && isSharedIban(iban)) person.payAliases = [{ iban: txn.iban, amount: txn.amount }];
+  state.people.push(person);
+  setReceived(person.id, importMonth, { received: txn.amount, receivedDate: txn.date, matchedTxnId: txn.id });
+  save();
+  closeModal();
+  recompute();
+  afterChange();
+  toast('Einnahme angelegt & gebucht', 'ok');
+}
+
 function afterChange() {
   renderImport();
   rerenderDashboard();
@@ -393,5 +449,5 @@ function afterChange() {
 Object.assign(window, {
   renderImport, setImportMonth, pickImportFile, bookAssignment, bookAll,
   rejectAssignment, assignUnmatched, assignUnmatchedTo,
-  openManualPayment, saveManualPayment
+  openManualPayment, saveManualPayment, declareIncome, saveIncome
 });
