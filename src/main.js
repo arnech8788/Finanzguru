@@ -139,8 +139,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.15.1';
+const APP_VERSION = '1.16.0';
 const CHANGELOG = [
+  ['1.16.0', 'Guthaben-Modell verbessert: (1) Das Guthaben rechnet jetzt nur noch ab dem eingestellten „Beitrag ab Monat" – frühere (z. B. importierte) Zahlungen und Monate davor verfälschen den Stand nicht mehr und erscheinen nicht als offen. Hinweis: Für Guthaben/monatlich ist „Beitrag ab Monat" das richtige Feld – „Zyklus-Start" gilt nur für viertel-/jährlich. (2) In der Soll/Ist-Tabelle steht bei Guthaben-Personen jetzt unter dem Namen „💳 bis <Monat>" bzw. „leer", damit du auf einen Blick siehst, bis wann das Guthaben reicht.'],
   ['1.15.1', 'Fix: Der Schalter „Als vorausbezahlt markieren" wirkt jetzt auch bei Personen im Guthaben-Modell (vorher wurde er dort ignoriert und der Monat blieb „offen").'],
   ['1.15.0', 'Status „Voraus" manuell setzbar: Im Zahlungs-Editor (Soll/Ist-Zelle) gibt es jetzt den Schalter „Als vorausbezahlt markieren". Damit lässt sich ein Monat als bereits abgedeckt kennzeichnen (zeigt „Voraus" statt „offen"), auch ohne Betrag – praktisch, wenn jemand mehrere Monate im Voraus bezahlt hat und die automatische Voraus-Erkennung (Quartal/Guthaben) nicht greift.'],
   ['1.14.0', 'Zwei Verbesserungen: (1) In der Soll/Ist-Matrix bleiben jetzt die Monats-Kopfzeile und die Namensspalte beim Scrollen sichtbar (fixierte Überschriften). (2) Im Zahlungs-Editor kannst du über „Zahlung gilt für Monat" einstellen, für welchen Monat eine Zahlung zählt – ideal bei Vorauszahlungen (z. B. im Mai für das Quartal ab Juni gezahlt); der Eintrag wird dann im Zielmonat verbucht.'],

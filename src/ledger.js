@@ -71,11 +71,13 @@ function prepaidStart(person) {
 // monatlicher Verbrauch (Anteil) von start bis month.
 export function prepaidBalance(person, month) {
   const b = state.ledger[person.id] || {};
-  let recv = 0;
-  for (const m of Object.keys(b)) if (monthIndex(m) <= monthIndex(month)) recv += Number(b[m].received) || 0;
   const start = prepaidStart(person);
+  const si = monthIndex(start), mi = monthIndex(month);
+  // Nur Zahlungen ab dem Startmonat zählen (frühere Historie ignorieren).
+  let recv = 0;
+  for (const m of Object.keys(b)) { const k = monthIndex(m); if (k >= si && k <= mi) recv += Number(b[m].received) || 0; }
   let cons = 0;
-  for (let m = start; monthIndex(m) <= monthIndex(month); m = shiftMonth(m, 1)) cons += monthlyAmount(person, m);
+  for (let m = start; monthIndex(m) <= mi; m = shiftMonth(m, 1)) cons += monthlyAmount(person, m);
   return recv - cons;
 }
 // Monat, bis zu dem das aktuelle Guthaben (ab refMonth) reicht (null = bereits überzogen).
@@ -146,7 +148,10 @@ export function renderLedger() {
       return `<td><button class="lg-cell lg-${st}" style="--sc:${meta.color}"
         onclick="openLedgerCell('${person.id}','${m}')" title="${escapeHtml(meta.label)}">${escapeHtml(label)}</button></td>`;
     }).join('');
-    return `<tr><th class="lg-name" onclick="openPerson('${person.id}')">${escapeHtml(person.name || '(ohne Name)')}</th>${cells}</tr>`;
+    const sub = person.schedule === 'prepaid'
+      ? `<div style="font-weight:400;font-size:10px;color:var(--tx3);margin-top:2px">${(() => { const u = prepaidCoveredUntil(person, currentMonth()); return u ? '💳 bis ' + escapeHtml(monthShort(u)) : '💳 leer'; })()}</div>`
+      : '';
+    return `<tr><th class="lg-name" onclick="openPerson('${person.id}')">${escapeHtml(person.name || '(ohne Name)')}${sub}</th>${cells}</tr>`;
   }).join('');
 
   el.innerHTML = `
