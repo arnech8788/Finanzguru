@@ -123,6 +123,20 @@ export function statusFor(person, month) {
   return 'none';
 }
 
+// Bis zu welchem Monat ist die Person (ab `from`) durchgehend gedeckt
+// (bezahlt/voraus)? Stoppt beim ersten offenen/teilweisen Monat. null = jetzt offen.
+export function coveredUntil(person, from) {
+  let last = null, none = 0, m = from;
+  for (let i = 0; i < 24; i++) {
+    const st = statusFor(person, m);
+    if (st === 'open' || st === 'partial') break;
+    if (st === 'paid' || st === 'advance') { last = m; none = 0; }
+    else if (++none >= 3) break; // mehrere Monate ohne Fälligkeit -> Ende
+    m = shiftMonth(m, 1);
+  }
+  return last;
+}
+
 // ---- Matrix-Ansicht -------------------------------------------------------
 export function setLedgerWindow(deltaMonths) {
   viewEnd = shiftMonth(viewEnd, deltaMonths);
@@ -148,9 +162,9 @@ export function renderLedger() {
       return `<td><button class="lg-cell lg-${st}" style="--sc:${meta.color}"
         onclick="openLedgerCell('${person.id}','${m}')" title="${escapeHtml(meta.label)}">${escapeHtml(label)}</button></td>`;
     }).join('');
-    const sub = person.schedule === 'prepaid'
-      ? `<div style="font-weight:400;font-size:10px;color:var(--tx3);margin-top:2px">${(() => { const u = prepaidCoveredUntil(person, currentMonth()); return u ? '💳 bis ' + escapeHtml(monthShort(u)) : '💳 leer'; })()}</div>`
-      : '';
+    const cu = coveredUntil(person, currentMonth());
+    const subTxt = cu ? 'bis ' + monthShort(cu) : (person.schedule === 'prepaid' ? 'Guthaben leer' : '');
+    const sub = subTxt ? `<div style="font-weight:400;font-size:10px;color:var(--tx3);margin-top:2px">${escapeHtml(subTxt)}</div>` : '';
     return `<tr><th class="lg-name" onclick="openPerson('${person.id}')">${escapeHtml(person.name || '(ohne Name)')}${sub}</th>${cells}</tr>`;
   }).join('');
 
