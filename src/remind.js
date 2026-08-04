@@ -97,7 +97,7 @@ export function computeReminders(s, now = new Date(), horizonDays = 120) {
     const b = (s.ledger && s.ledger[p.id]) || {};
     const start = p.startMonth || Object.keys(b).filter((k) => (Number(b[k] && b[k].received) || 0) > 0).sort()[0] || nowMonth;
     let recv = 0;
-    for (const k of Object.keys(b)) if (monthIndex(k) <= monthIndex(nowMonth)) recv += Number(b[k].received) || 0;
+    for (const k of Object.keys(b)) if (monthIndex(k) >= monthIndex(start) && monthIndex(k) <= monthIndex(nowMonth)) recv += Number(b[k].received) || 0;
     let cons = 0;
     for (let cur = start; monthIndex(cur) <= monthIndex(nowMonth); cur = shiftMonth(cur, 1)) cons += monthlyAmount(p, cur);
     const bal = recv - cons;
