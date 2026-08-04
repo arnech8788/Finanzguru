@@ -26,7 +26,7 @@ export function getReceived(personId, month) {
   return (b && b[month]) || null;
 }
 
-export function setReceived(personId, month, { received, receivedDate, matchedTxnId, note, extraDue, extraNote } = {}) {
+export function setReceived(personId, month, { received, receivedDate, matchedTxnId, note, extraDue, extraNote, covered } = {}) {
   const b = bucket(personId);
   const entry = b[month] || {};
   if (received != null) entry.received = Number(received) || 0;
@@ -35,6 +35,7 @@ export function setReceived(personId, month, { received, receivedDate, matchedTx
   if (note !== undefined) entry.note = note || '';
   if (extraDue !== undefined) entry.extraDue = Number(extraDue) || 0;
   if (extraNote !== undefined) entry.extraNote = extraNote || '';
+  if (covered !== undefined) entry.covered = !!covered;
   entry.updated = Date.now();
   b[month] = entry;
 }
@@ -103,11 +104,12 @@ export function statusFor(person, month) {
   const entry = getReceived(person.id, month);
   const rec = entry ? Number(entry.received) || 0 : 0;
   if (exp > 0) {
-    if (rec <= 0) return 'open';
     if (rec + 0.01 >= exp) return 'paid';
-    return 'partial';
+    if (rec > 0) return 'partial';
+    return (entry && entry.covered) ? 'advance' : 'open'; // manuell als vorausbezahlt markiert
   }
   if (rec > 0) return 'paid';
+  if (entry && entry.covered) return 'advance';
   const due = governingDueMonth(person, month);
   if (due !== month) {
     const dueExp = expectedForMonth(person, due);
@@ -196,6 +198,9 @@ export function openLedgerCell(personId, month) {
       <label class="fld"><span>Notiz (optional)</span><input name="note" type="text" value="${escapeHtml(entry.note || '')}" placeholder="z. B. per PayPal"></label>
       <label class="fld"><span>Zahlung gilt für Monat</span><input name="applyMonth" type="month" value="${escapeHtml(month)}"></label>
       <p class="muted small" style="margin:2px 0 8px">Standard: dieser Monat. Bei einer Vorauszahlung für einen späteren Monat hier den Zielmonat wählen (z. B. Beginn des im Voraus bezahlten Quartals) – der Eintrag wird dann dort verbucht.</p>
+      <label class="cost-row" style="margin:2px 0 8px"><span>Als vorausbezahlt („Voraus") markieren</span>
+        <input type="checkbox" name="covered" ${entry.covered ? 'checked' : ''}></label>
+      <p class="muted small" style="margin:0 0 8px">Für Monate, die durch eine frühere Zahlung bereits abgedeckt sind – zeigt „Voraus" statt „offen", ohne dass hier ein Betrag stehen muss.</p>
       <details class="advanced"${extra > 0 ? ' open' : ''}>
         <summary>Einmaliger Zusatz-Soll (z. B. Bereitstellung, Versand, neue Karten)</summary>
         <div class="fld-row" style="margin-top:8px">
@@ -236,7 +241,8 @@ export function saveLedgerCell(personId, month) {
     receivedDate: (fd.get('date') || '').toString(),
     note: (fd.get('note') || '').toString().trim(),
     extraDue: extraRaw ? parseEUR(extraRaw) : 0,
-    extraNote: (fd.get('extraNote') || '').toString().trim()
+    extraNote: (fd.get('extraNote') || '').toString().trim(),
+    covered: !!fd.get('covered')
   };
   if (target !== month) {
     // Eintrag in den gewählten Zielmonat verschieben, Ursprungsmonat leeren.
