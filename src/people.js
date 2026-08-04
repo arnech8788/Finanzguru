@@ -241,6 +241,7 @@ function readDraft() {
 
 function editorHtml() {
   const p = draft;
+  const catOpts = [...new Set([...state.people.map((x) => x.category).filter(Boolean), 'Mobilfunk', 'Spotify', 'Netflix', 'Sonstiges'])];
   const opts = (list, val, lbl = 'label', id = 'id') => list.map((o) =>
     `<option value="${o[id]}" ${p && val === o[id] ? 'selected' : ''}>${escapeHtml(o[lbl])}</option>`).join('');
   return `
@@ -249,7 +250,7 @@ function editorHtml() {
         <input name="name" type="text" value="${escapeHtml(p.name || '')}" placeholder="Vor- und Nachname" required></label>
       <label class="fld"><span>Kategorie (optional)</span>
         <input name="category" type="text" list="catList" value="${escapeHtml(p.category || '')}" placeholder="z. B. Mobilfunk, Spotify, Netflix"></label>
-      <datalist id="catList"><option value="Mobilfunk"></option><option value="Spotify"></option><option value="Netflix"></option><option value="Sonstiges"></option></datalist>
+      <datalist id="catList">${catOpts.map((c) => `<option value="${escapeHtml(c)}"></option>`).join('')}</datalist>
       <div class="fld-row">
         <label class="fld"><span>Monatlicher Anteil (€)</span>
           <input name="expectedAmount" type="text" inputmode="decimal" value="${p.expectedAmount ? String(p.expectedAmount).replace('.', ',') : ''}" placeholder="z. B. 7"></label>

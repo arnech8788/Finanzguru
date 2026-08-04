@@ -394,15 +394,19 @@ export function declareIncome(txnId) {
   const txn = (result && result.unmatched.find((t) => t.id === txnId)) || parsed.txns.find((t) => t.id === txnId);
   if (!txn) return;
   const nm = txn.name || txn.purpose || '';
+  // Auswahl = bereits vergebene Kategorien + Standardvorschläge (dedupe, Reihenfolge erhalten).
+  const catOpts = [...new Set([...state.people.map((p) => p.category).filter(Boolean), 'Mobilfunk', 'Spotify', 'Netflix', 'Sonstiges'])];
+  const hay = `${txn.name || ''} ${txn.purpose || ''}`.toLowerCase();
+  const guess = catOpts.find((c) => hay.includes(c.toLowerCase())) || '';
   openModal('Als regelmäßige Einnahme anlegen', `
     <p class="muted small" style="margin:0 0 12px">${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''} · <b>${fmtEUR(txn.amount)}</b></p>
     <form id="incomeForm" onsubmit="return false">
       <label class="fld"><span>Name / Bezeichnung</span><input name="name" type="text" value="${escapeHtml(nm)}" placeholder="z. B. Spotify – Max"></label>
       <div class="fld-row">
-        <label class="fld"><span>Kategorie</span><input name="category" type="text" list="incCatList" value="Spotify" placeholder="z. B. Spotify"></label>
+        <label class="fld"><span>Kategorie</span><input name="category" type="text" list="incCatList" value="${escapeHtml(guess)}" placeholder="z. B. Spotify"></label>
         <label class="fld"><span>Erwartet (€)</span><input name="amount" type="text" inputmode="decimal" value="${String(txn.amount).replace('.', ',')}"></label>
       </div>
-      <datalist id="incCatList"><option value="Spotify"></option><option value="Netflix"></option><option value="Mobilfunk"></option><option value="Sonstiges"></option></datalist>
+      <datalist id="incCatList">${catOpts.map((c) => `<option value="${escapeHtml(c)}"></option>`).join('')}</datalist>
       <label class="fld"><span>Rhythmus</span><select name="schedule">${SCHEDULES.filter((s) => s.id !== 'none').map((s) => `<option value="${s.id}" ${s.id === 'monthly' ? 'selected' : ''}>${escapeHtml(s.label)}</option>`).join('')}</select></label>
       <p class="muted small" style="margin:2px 0 0">Wird als Einnahme ab ${escapeHtml(monthLabel(importMonth))} angelegt, die Zahlung diesem Monat gutgeschrieben und die IBAN für künftige Monate gelernt. Karten/SIM sind nicht nötig.</p>
       <div class="modal-actions" style="margin-top:12px">
