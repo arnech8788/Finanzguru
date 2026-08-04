@@ -139,8 +139,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 const CHANGELOG = [
+  ['1.14.0', 'Zwei Verbesserungen: (1) In der Soll/Ist-Matrix bleiben jetzt die Monats-Kopfzeile und die Namensspalte beim Scrollen sichtbar (fixierte Überschriften). (2) Im Zahlungs-Editor kannst du über „Zahlung gilt für Monat" einstellen, für welchen Monat eine Zahlung zählt – ideal bei Vorauszahlungen (z. B. im Mai für das Quartal ab Juni gezahlt); der Eintrag wird dann im Zielmonat verbucht.'],
   ['1.13.0', 'Guthaben-Modell (bei Bedarf, kein fester Rhythmus): Neuer Rhythmus „Guthaben" für Personen, die unregelmäßig per Gutschein zahlen (z. B. 50€-Netflix-/Spotify-Guthaben). Der Betrag wird als Guthaben verbucht und Monat für Monat mit dem eingestellten Anteil „verbraucht". Die App berechnet automatisch, bis wann das Guthaben reicht und ab wann wieder eine Zahlung nötig ist (in der Personen-Ansicht sichtbar), zeigt gedeckte Monate nicht mehr als „offen" an und erinnert rechtzeitig, wenn das Guthaben aufgebraucht ist.'],
   ['1.12.1', 'Kategorie-Auswahl: Beim Anlegen einer Einnahme und im Personen-Editor werden jetzt auch deine bereits vergebenen Kategorien zur Auswahl angeboten (nicht nur die Standardvorschläge). Der Einnahme-Dialog rät die Kategorie zudem aus dem Verwendungszweck.'],
   ['1.12.0', 'Übersicht nach Kategorie: Wenn du mehrere Kategorien nutzt (z. B. Mobilfunk, Spotify, Netflix), erscheinen oben in der Übersicht Filter-Chips. Damit siehst du Soll/Erhalten/Offen und die Liste wahlweise für „Alle Kategorien" oder eine einzelne Kategorie – jeweils mit eigenen Summen.'],
