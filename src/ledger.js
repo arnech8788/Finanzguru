@@ -89,10 +89,12 @@ export function prepaidCoveredUntil(person, refMonth) {
 function prepaidCellStatus(person, month) {
   const start = prepaidStart(person);
   const r = monthlyAmount(person, month);
-  const recvThis = (getReceived(person.id, month) || {}).received || 0;
-  if (r <= 0 || monthIndex(month) < monthIndex(start)) return recvThis > 0 ? 'paid' : 'none';
+  const entry = getReceived(person.id, month) || {};
+  const recvThis = entry.received || 0;
+  if (r <= 0 || monthIndex(month) < monthIndex(start)) return recvThis > 0 ? 'paid' : (entry.covered ? 'advance' : 'none');
   const after = prepaidBalance(person, month);
   if (after >= -0.005) return recvThis >= r - 0.005 ? 'paid' : 'advance';
+  if (entry.covered) return 'advance'; // manuell als vorausbezahlt markiert
   const before = after - recvThis + r; // Guthaben am Ende des Vormonats
   return (before + recvThis) > 0.005 ? 'partial' : 'open';
 }

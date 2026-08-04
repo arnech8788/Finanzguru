@@ -139,8 +139,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.15.1';
 const CHANGELOG = [
+  ['1.15.1', 'Fix: Der Schalter „Als vorausbezahlt markieren" wirkt jetzt auch bei Personen im Guthaben-Modell (vorher wurde er dort ignoriert und der Monat blieb „offen").'],
   ['1.15.0', 'Status „Voraus" manuell setzbar: Im Zahlungs-Editor (Soll/Ist-Zelle) gibt es jetzt den Schalter „Als vorausbezahlt markieren". Damit lässt sich ein Monat als bereits abgedeckt kennzeichnen (zeigt „Voraus" statt „offen"), auch ohne Betrag – praktisch, wenn jemand mehrere Monate im Voraus bezahlt hat und die automatische Voraus-Erkennung (Quartal/Guthaben) nicht greift.'],
   ['1.14.0', 'Zwei Verbesserungen: (1) In der Soll/Ist-Matrix bleiben jetzt die Monats-Kopfzeile und die Namensspalte beim Scrollen sichtbar (fixierte Überschriften). (2) Im Zahlungs-Editor kannst du über „Zahlung gilt für Monat" einstellen, für welchen Monat eine Zahlung zählt – ideal bei Vorauszahlungen (z. B. im Mai für das Quartal ab Juni gezahlt); der Eintrag wird dann im Zielmonat verbucht.'],
   ['1.13.0', 'Guthaben-Modell (bei Bedarf, kein fester Rhythmus): Neuer Rhythmus „Guthaben" für Personen, die unregelmäßig per Gutschein zahlen (z. B. 50€-Netflix-/Spotify-Guthaben). Der Betrag wird als Guthaben verbucht und Monat für Monat mit dem eingestellten Anteil „verbraucht". Die App berechnet automatisch, bis wann das Guthaben reicht und ab wann wieder eine Zahlung nötig ist (in der Personen-Ansicht sichtbar), zeigt gedeckte Monate nicht mehr als „offen" an und erinnert rechtzeitig, wenn das Guthaben aufgebraucht ist.'],
