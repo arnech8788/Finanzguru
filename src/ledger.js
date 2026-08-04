@@ -194,6 +194,8 @@ export function openLedgerCell(personId, month) {
         <label class="fld"><span>am</span><input name="date" type="date" value="${escapeHtml(entry.receivedDate || '')}"></label>
       </div>
       <label class="fld"><span>Notiz (optional)</span><input name="note" type="text" value="${escapeHtml(entry.note || '')}" placeholder="z. B. per PayPal"></label>
+      <label class="fld"><span>Zahlung gilt für Monat</span><input name="applyMonth" type="month" value="${escapeHtml(month)}"></label>
+      <p class="muted small" style="margin:2px 0 8px">Standard: dieser Monat. Bei einer Vorauszahlung für einen späteren Monat hier den Zielmonat wählen (z. B. Beginn des im Voraus bezahlten Quartals) – der Eintrag wird dann dort verbucht.</p>
       <details class="advanced"${extra > 0 ? ' open' : ''}>
         <summary>Einmaliger Zusatz-Soll (z. B. Bereitstellung, Versand, neue Karten)</summary>
         <div class="fld-row" style="margin-top:8px">
@@ -228,18 +230,27 @@ export function saveLedgerCell(personId, month) {
   const recRaw = (fd.get('received') || '').toString().trim();
   const received = recRaw ? parseEUR(recRaw) : 0;
   const extraRaw = (fd.get('extraDue') || '').toString().trim();
-  setReceived(personId, month, {
+  const target = (fd.get('applyMonth') || month).toString() || month;
+  const payload = {
     received,
     receivedDate: (fd.get('date') || '').toString(),
     note: (fd.get('note') || '').toString().trim(),
     extraDue: extraRaw ? parseEUR(extraRaw) : 0,
     extraNote: (fd.get('extraNote') || '').toString().trim()
-  });
+  };
+  if (target !== month) {
+    // Eintrag in den gewählten Zielmonat verschieben, Ursprungsmonat leeren.
+    payload.matchedTxnId = (getReceived(personId, month) || {}).matchedTxnId || '';
+    setReceived(personId, target, payload);
+    clearReceived(personId, month);
+  } else {
+    setReceived(personId, month, payload);
+  }
   save();
   closeModal();
   renderLedger();
   rerenderDashboard();
-  toast('Gespeichert', 'ok');
+  toast(target !== month ? `Gebucht für ${monthLabel(target)}` : 'Gespeichert', 'ok');
 }
 
 export function clearLedgerCell(personId, month) {
