@@ -1,11 +1,11 @@
 // Personen/Beitragszahler: anlegen, bearbeiten, Karten/SIM-Inventar pflegen.
 import { ICO, escapeHtml, highlight, openModal, closeModal, updateModalBody, confirmDialog, toast } from './ui.js';
 import { state, save, rerenderDashboard } from './main.js';
-import { fmtEUR, parseEUR, fmtDate, currentMonth, monthLabel } from './money.js';
+import { fmtEUR, parseEUR, fmtDate, currentMonth, monthLabel, shiftMonth } from './money.js';
 import { PAYMENT_METHODS, paymentMethodLabel } from './data/paymentMethods.js';
 import { SCHEDULES, scheduleLabel, expectedForMonth, monthlyAmount } from './data/schedules.js';
 import { CARD_TYPES, cardTypeLabel, SIM_KINDS, simKindLabel } from './data/cardTypes.js';
-import { statusFor, STATUS, renderLedger } from './ledger.js';
+import { statusFor, STATUS, renderLedger, prepaidBalance, prepaidCoveredUntil } from './ledger.js';
 
 let filter = { query: '' };
 let draft = null; // aktuell bearbeitete Person (Arbeitskopie)
@@ -101,6 +101,7 @@ function personViewHtml(p) {
         <div><span class="muted small">Zahlart</span><b>${escapeHtml(paymentMethodLabel(p.paymentMethod))}</b></div>
         <div><span class="muted small">Soll diesen Monat</span><b>${exp > 0 ? fmtEUR(exp) : '–'}</b></div>
       </div>
+      ${p.schedule === 'prepaid' ? prepaidInfo(p) : ''}
       ${p.category ? `<p class="muted small" style="margin:8px 0 0">Kategorie: ${escapeHtml(p.category)}</p>` : ''}
       ${p.startMonth ? `<p class="muted small" style="margin:8px 0 0">Beitrag ab ${escapeHtml(monthLabel(p.startMonth))}</p>` : ''}
       ${p.notes ? `<div class="pv-block"><span class="muted small">Notiz</span><p style="white-space:pre-wrap;margin:4px 0 0">${escapeHtml(p.notes)}</p></div>` : ''}
@@ -114,6 +115,20 @@ function personViewHtml(p) {
         <button class="btn btn-primary" onclick="editPerson('${p.id}')">${ICO.edit} Bearbeiten</button>
       </div>
     </div>`;
+}
+
+// Guthaben-Übersicht für Prepaid-Personen (z. B. 50€-Gutschein deckt mehrere Monate).
+function prepaidInfo(p) {
+  const m = currentMonth();
+  const bal = prepaidBalance(p, m);
+  const until = prepaidCoveredUntil(p, m);
+  return `<div class="pv-block">
+    <span class="muted small">Guthaben</span>
+    <p style="margin:4px 0 0"><b>${fmtEUR(bal)}</b>${bal < -0.005
+      ? ' · <span style="color:#e23b3b">überzogen – neue Zahlung nötig</span>'
+      : (until ? ` · gedeckt bis <b>${escapeHtml(monthLabel(until))}</b>` : '')}</p>
+    ${bal >= -0.005 && until ? `<p class="muted small" style="margin:4px 0 0">Nächste Zahlung nötig ab ${escapeHtml(monthLabel(shiftMonth(until, 1)))}.</p>` : ''}
+  </div>`;
 }
 
 // Gelernte Abgleich-Daten anzeigen + einzeln/komplett entfernbar machen.

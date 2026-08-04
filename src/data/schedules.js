@@ -8,6 +8,7 @@ export const SCHEDULES = [
   { id: 'bimonthly', label: 'Alle 2 Monate', period: 2 },
   { id: 'quarterly', label: 'Vierteljährlich (im Voraus)', period: 3 },
   { id: 'yearly', label: 'Jährlich', period: 12 },
+  { id: 'prepaid', label: 'Guthaben (bei Bedarf, z. B. 50€-Gutschein)', period: 1 },
   { id: 'none', label: 'Keine Rückzahlung (zahlt selbst)', period: 0 }
 ];
 

@@ -1,8 +1,8 @@
 // Soll/Ist-Buch: erhaltene Zahlungen je Person & Monat + Matrix-Ansicht.
 import { ICO, escapeHtml, openModal, closeModal, toast } from './ui.js';
 import { state, save, rerenderDashboard } from './main.js';
-import { fmtEUR, parseEUR, fmtDate, monthLabel, monthShort, lastMonths, currentMonth, todayISO, shiftMonth } from './money.js';
-import { expectedForMonth, governingDueMonth, scheduleLabel } from './data/schedules.js';
+import { fmtEUR, parseEUR, fmtDate, monthLabel, monthShort, lastMonths, currentMonth, todayISO, shiftMonth, monthIndex } from './money.js';
+import { expectedForMonth, governingDueMonth, scheduleLabel, monthlyAmount } from './data/schedules.js';
 
 export const STATUS = {
   paid: { label: 'Bezahlt', color: '#2fb86b' },
@@ -58,8 +58,47 @@ export function clearReceived(personId, month) {
   if (b) delete b[month];
 }
 
+// ---- Guthaben-Modell (Prepaid) --------------------------------------------
+// Erster Monat, ab dem verbraucht wird: startMonth oder frühester Zahlungsmonat.
+function prepaidStart(person) {
+  if (person.startMonth) return person.startMonth;
+  const b = state.ledger[person.id] || {};
+  const ms = Object.keys(b).filter((m) => (Number(b[m] && b[m].received) || 0) > 0).sort();
+  return ms[0] || currentMonth();
+}
+// Guthaben-Stand am Ende von `month`: alle Zahlungen bis inkl. month minus
+// monatlicher Verbrauch (Anteil) von start bis month.
+export function prepaidBalance(person, month) {
+  const b = state.ledger[person.id] || {};
+  let recv = 0;
+  for (const m of Object.keys(b)) if (monthIndex(m) <= monthIndex(month)) recv += Number(b[m].received) || 0;
+  const start = prepaidStart(person);
+  let cons = 0;
+  for (let m = start; monthIndex(m) <= monthIndex(month); m = shiftMonth(m, 1)) cons += monthlyAmount(person, m);
+  return recv - cons;
+}
+// Monat, bis zu dem das aktuelle Guthaben (ab refMonth) reicht (null = bereits überzogen).
+export function prepaidCoveredUntil(person, refMonth) {
+  const r = monthlyAmount(person, refMonth);
+  if (r <= 0) return null;
+  const bal = prepaidBalance(person, refMonth);
+  if (bal < -0.005) return null;
+  return shiftMonth(refMonth, Math.floor((bal + 0.005) / r));
+}
+function prepaidCellStatus(person, month) {
+  const start = prepaidStart(person);
+  const r = monthlyAmount(person, month);
+  const recvThis = (getReceived(person.id, month) || {}).received || 0;
+  if (r <= 0 || monthIndex(month) < monthIndex(start)) return recvThis > 0 ? 'paid' : 'none';
+  const after = prepaidBalance(person, month);
+  if (after >= -0.005) return recvThis >= r - 0.005 ? 'paid' : 'advance';
+  const before = after - recvThis + r; // Guthaben am Ende des Vormonats
+  return (before + recvThis) > 0.005 ? 'partial' : 'open';
+}
+
 // ---- Status ---------------------------------------------------------------
 export function statusFor(person, month) {
+  if (person.schedule === 'prepaid') return prepaidCellStatus(person, month);
   const exp = effectiveExpected(person, month);
   const entry = getReceived(person.id, month);
   const rec = entry ? Number(entry.received) || 0 : 0;

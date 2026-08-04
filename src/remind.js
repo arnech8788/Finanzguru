@@ -1,6 +1,6 @@
 // Reine Reminder-Berechnung (kein DOM, keine Seiteneffekte) – testbar.
 import { monthKey, monthIndex, shiftMonth } from './money.js';
-import { schedulePeriod, governingDueMonth, expectedForMonth } from './data/schedules.js';
+import { schedulePeriod, governingDueMonth, expectedForMonth, monthlyAmount } from './data/schedules.js';
 
 const RHYTHM_WORD = { quarterly: 'vierteljährliche', yearly: 'jährliche', bimonthly: 'zweimonatliche' };
 
@@ -37,6 +37,7 @@ function atDate(ym, day, hh, mm) {
 // Monatlich offen? (ohne ledger.js – liest direkt aus s.ledger)
 function hasOpenMonthly(s, ym) {
   return (s.people || []).some((p) => {
+    if (p.schedule === 'prepaid') return false; // Guthaben-Personen separat behandeln
     if (schedulePeriod(p.schedule) !== 1) return false;
     const exp = expectedForMonth(p, ym);
     if (!(exp > 0)) return false;
@@ -84,6 +85,27 @@ export function computeReminders(s, now = new Date(), horizonDays = 120) {
         out.push({ at: remAt.toISOString(), type: 'lead', title: 'Finanzguru', body: `Bald fällig: ${RHYTHM_WORD[p.schedule] || ''} Mobilfunk-Zahlung.`.replace('  ', ' '), tag: `lead-${p.id}-${dm}` });
       }
       dm = shiftMonth(dm, per);
+    }
+  }
+
+  // Guthaben-Personen (Prepaid): erinnern, wenn das Guthaben (bald) aufgebraucht ist.
+  // Generischer Text ohne Namen – wird ggf. an den Push-Server synchronisiert.
+  for (const p of s.people || []) {
+    if (p.schedule !== 'prepaid') continue;
+    const r = monthlyAmount(p, nowMonth);
+    if (!(r > 0)) continue;
+    const b = (s.ledger && s.ledger[p.id]) || {};
+    const start = p.startMonth || Object.keys(b).filter((k) => (Number(b[k] && b[k].received) || 0) > 0).sort()[0] || nowMonth;
+    let recv = 0;
+    for (const k of Object.keys(b)) if (monthIndex(k) <= monthIndex(nowMonth)) recv += Number(b[k].received) || 0;
+    let cons = 0;
+    for (let cur = start; monthIndex(cur) <= monthIndex(nowMonth); cur = shiftMonth(cur, 1)) cons += monthlyAmount(p, cur);
+    const bal = recv - cons;
+    const ahead = bal >= 0 ? Math.floor((bal + 0.005) / r) : -1;
+    const firstUncovered = shiftMonth(nowMonth, ahead + 1); // erster nicht gedeckter Monat
+    const remAt = atDate(firstUncovered, 1, hh, mm);
+    if (within(remAt)) {
+      out.push({ at: remAt.toISOString(), type: 'prepaid', title: 'Finanzguru', body: 'Ein Guthaben-Beitrag ist aufgebraucht – neue Zahlung/Gutschein anfragen.', tag: `prepaid-${p.id}-${firstUncovered}` });
     }
   }
 
