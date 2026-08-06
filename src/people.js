@@ -17,7 +17,7 @@ function newCard() {
   return { type: 'multisim', phone: '', simNr: '', auftragsNr: '', owner: '', simKind: 'sim', activeSince: '', runtimeUntil: '', idDoc: '', notes: '' };
 }
 function blankPerson() {
-  return { id: uid(), name: '', category: '', ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', startMonth: '', expectedAmount: 0, amountChanges: [], cards: [], notes: '' };
+  return { id: uid(), name: '', category: '', contactApp: '', contact: '', ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', startMonth: '', expectedAmount: 0, amountChanges: [], cards: [], notes: '' };
 }
 
 export function setPeopleSearch(q) {
@@ -103,6 +103,7 @@ function personViewHtml(p) {
       </div>
       ${p.schedule === 'prepaid' ? prepaidInfo(p) : ''}
       ${p.category ? `<p class="muted small" style="margin:8px 0 0">Kategorie: ${escapeHtml(p.category)}</p>` : ''}
+      ${contactHtml(p)}
       ${p.startMonth ? `<p class="muted small" style="margin:8px 0 0">Beitrag ab ${escapeHtml(monthLabel(p.startMonth))}</p>` : ''}
       ${p.notes ? `<div class="pv-block"><span class="muted small">Notiz</span><p style="white-space:pre-wrap;margin:4px 0 0">${escapeHtml(p.notes)}</p></div>` : ''}
       <div class="pv-block">
@@ -129,6 +130,36 @@ function prepaidInfo(p) {
       : (until ? ` · gedeckt bis <b>${escapeHtml(monthLabel(until))}</b>` : '')}</p>
     ${bal >= -0.005 && until ? `<p class="muted small" style="margin:4px 0 0">Nächste Zahlung nötig ab ${escapeHtml(monthLabel(shiftMonth(until, 1)))}.</p>` : ''}
   </div>`;
+}
+
+// Telefonnummer in internationale Ziffern (Annahme: DE, führende 0 -> 49).
+function toIntlDigits(s) {
+  let d = String(s || '').replace(/[^\d+]/g, '');
+  if (d.startsWith('+')) return d.slice(1);
+  if (d.startsWith('00')) return d.slice(2);
+  if (d.startsWith('0')) return '49' + d.slice(1);
+  return d;
+}
+
+// Kontakt-Zeile mit (wo möglich) anklickbarem Messenger-/Telefon-Link.
+function contactHtml(p) {
+  const app = (p.contactApp || '').trim();
+  const handle = (p.contact || '').trim();
+  if (!app && !handle) return '';
+  const a = app.toLowerCase();
+  const label = handle || p.name || '';
+  const cardPhone = ((p.cards || []).find((c) => c.phone) || {}).phone || '';
+  const intl = toIntlDigits(/\d/.test(handle) ? handle : cardPhone);
+  let href = '';
+  if (a.includes('whatsapp')) href = intl ? `https://wa.me/${intl}` : '';
+  else if (a.includes('telegram')) href = handle.startsWith('@') ? `https://t.me/${handle.slice(1)}` : '';
+  else if (a.includes('signal')) href = intl ? `https://signal.me/#p/+${intl}` : '';
+  else if (a.includes('mail')) href = handle.includes('@') ? `mailto:${handle}` : '';
+  else if (a.includes('sms')) href = intl ? `sms:+${intl}` : '';
+  else if (a.includes('telefon') || a.includes('anruf')) href = intl ? `tel:+${intl}` : '';
+  const inner = `${escapeHtml(app || 'Kontakt')}${label ? ' · ' + escapeHtml(label) : ''}`;
+  const body = href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener">${inner}</a>` : inner;
+  return `<div class="pv-block"><span class="muted small">Kontakt</span><p style="margin:4px 0 0">${body}</p></div>`;
 }
 
 // Gelernte Abgleich-Daten anzeigen + einzeln/komplett entfernbar machen.
@@ -227,6 +258,8 @@ function readDraft() {
   const fd = new FormData(form);
   draft.name = (fd.get('name') || '').toString().trim();
   draft.category = (fd.get('category') || '').toString().trim();
+  draft.contactApp = (fd.get('contactApp') || '').toString().trim();
+  draft.contact = (fd.get('contact') || '').toString().trim();
   draft.ibans = (fd.get('ibans') || '').toString().split(/\n+/).map((s) => s.trim()).filter(Boolean);
   draft.paymentMethod = (fd.get('paymentMethod') || 'ueberweisung').toString();
   draft.schedule = (fd.get('schedule') || 'monthly').toString();
@@ -285,6 +318,13 @@ function editorHtml() {
       ${amountChangesHtml(p)}
       <label class="fld"><span>IBAN(s) – eine pro Zeile (für Abgleich)</span>
         <textarea name="ibans" rows="2" placeholder="DE.. (mehrere möglich)">${escapeHtml((p.ibans || []).join('\n'))}</textarea></label>
+      <div class="fld-row">
+        <label class="fld"><span>Kontakt über</span>
+          <input name="contactApp" type="text" list="contactAppList" value="${escapeHtml(p.contactApp || '')}" placeholder="WhatsApp, Telegram …"></label>
+        <label class="fld"><span>Kontakt (Nummer/Name)</span>
+          <input name="contact" type="text" value="${escapeHtml(p.contact || '')}" placeholder="leer = Name / SIM-Nummer"></label>
+      </div>
+      <datalist id="contactAppList"><option value="WhatsApp"></option><option value="Telegram"></option><option value="Signal"></option><option value="SMS"></option><option value="Telefon"></option><option value="E-Mail"></option></datalist>
       <label class="fld"><span>Notiz</span>
         <textarea name="notes" rows="2" placeholder="optional">${escapeHtml(p.notes || '')}</textarea></label>
 

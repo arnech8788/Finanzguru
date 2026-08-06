@@ -139,8 +139,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.18.0';
 const CHANGELOG = [
+  ['1.18.0', 'Kontakt pro Person: Im Personen-Editor kannst du jetzt „Kontakt über" (WhatsApp, Telegram, Signal, SMS, Telefon, E-Mail) und optional eine Nummer bzw. einen abweichenden Namen/Handle hinterlegen. In der Personen-Ansicht wird daraus – wo möglich – ein anklickbarer Link (öffnet den Chat direkt). Bei WhatsApp/Telefon wird automatisch die SIM-Nummer der Person genutzt, wenn du nichts anderes einträgst.'],
   ['1.17.0', '„bezahlt bis" für alle: In der Soll/Ist-Tabelle steht jetzt bei jeder Person unter dem Namen „bis <Monat>" – bis zu welchem Monat sie durchgehend gedeckt ist (bezahlt oder im Voraus). Vorher gab es das nur im Guthaben-Modell; jetzt auch für vierteljährlich (z. B. Raymond: bis Aug), monatlich usw.'],
   ['1.16.0', 'Guthaben-Modell verbessert: (1) Das Guthaben rechnet jetzt nur noch ab dem eingestellten „Beitrag ab Monat" – frühere (z. B. importierte) Zahlungen und Monate davor verfälschen den Stand nicht mehr und erscheinen nicht als offen. Hinweis: Für Guthaben/monatlich ist „Beitrag ab Monat" das richtige Feld – „Zyklus-Start" gilt nur für viertel-/jährlich. (2) In der Soll/Ist-Tabelle steht bei Guthaben-Personen jetzt unter dem Namen „💳 bis <Monat>" bzw. „leer", damit du auf einen Blick siehst, bis wann das Guthaben reicht.'],
   ['1.15.1', 'Fix: Der Schalter „Als vorausbezahlt markieren" wirkt jetzt auch bei Personen im Guthaben-Modell (vorher wurde er dort ignoriert und der Monat blieb „offen").'],
