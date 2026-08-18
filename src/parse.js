@@ -2,10 +2,23 @@
 // Transaction = { id, date:'YYYY-MM-DD', name, iban, purpose, amount, raw }
 import { parseEUR, parseGermanDate } from './money.js';
 
-let seq = 0;
-function txnId() {
-  seq += 1;
-  return 't' + Date.now().toString(36) + '_' + seq.toString(36);
+// Inhaltsbasierte, stabile ID (gleiche Buchung -> gleiche ID über Re-Importe).
+function hashTxn(t) {
+  const s = `${t.date}|${t.amount}|${(t.name || '').trim()}|${(t.iban || '').trim()}|${(t.purpose || '').trim()}`;
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return 't' + h.toString(36);
+}
+// Identische Buchungen in DERSELBEN Datei eindeutig machen (Suffix pro Wiederholung).
+function assignIds(txns) {
+  const seen = new Map();
+  for (const t of txns) {
+    let id = hashTxn(t);
+    const n = (seen.get(id) || 0) + 1;
+    seen.set(id, n);
+    t.id = n > 1 ? `${id}_${n}` : id;
+  }
+  return txns;
 }
 
 const DATE_AT_START = /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})\b/;
@@ -48,7 +61,6 @@ export function transactionsFromLines(lines) {
       }
     }
     txns.push({
-      id: txnId(),
       date: cur.date,
       name: cur.name.trim(),
       iban,
@@ -85,7 +97,7 @@ export function transactionsFromLines(lines) {
     }
   }
   flush();
-  return txns.filter((t) => t.date && Number.isFinite(t.amount));
+  return assignIds(txns.filter((t) => t.date && Number.isFinite(t.amount)));
 }
 
 // PDF -> einzelne (visuelle) Textzeilen. pdf.js wird nur hier (lazy) geladen.
@@ -195,7 +207,6 @@ export function parseDkbCsv(text) {
     let date = parseGermanDate(ci.date >= 0 ? cols[ci.date] : '');
     if (!date && ci.date >= 0 && /^\d{4}-\d{2}-\d{2}/.test(cols[ci.date])) date = cols[ci.date].slice(0, 10);
     txns.push({
-      id: txnId(),
       date,
       name: ci.name >= 0 ? cols[ci.name] : '',
       iban: ci.iban >= 0 ? cols[ci.iban].replace(/\s+/g, '') : '',
@@ -204,7 +215,7 @@ export function parseDkbCsv(text) {
       raw: lines[i]
     });
   }
-  return txns.filter((t) => t.date);
+  return assignIds(txns.filter((t) => t.date));
 }
 
 // Einstiegspunkt: anhand Dateiendung/Typ den passenden Parser wählen.

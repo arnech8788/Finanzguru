@@ -2,7 +2,7 @@
 // Eingänge buchen und unbekannte Eingänge manuell zuordnen.
 import { ICO, escapeHtml, openModal, closeModal, updateModalBody, toast } from './ui.js';
 import { state, save, rerenderDashboard, showScreen } from './main.js';
-import { fmtEUR, parseEUR, fmtDate, monthLabel, currentMonth, shiftMonth, todayISO } from './money.js';
+import { fmtEUR, parseEUR, fmtDate, monthLabel, monthKey, currentMonth, shiftMonth, todayISO } from './money.js';
 import { expectedForMonth, SCHEDULES } from './data/schedules.js';
 import { isSharedIban, normalizeIban, normalizeName, looksAnonymous } from './match.js';
 import { matchMonth } from './match.js';
@@ -15,6 +15,35 @@ let importMonth = currentMonth();
 let parsed = null; // { txns, fileName }
 let result = null; // { assignments, unmatched }
 let busy = false;
+let txnQuery = '';            // Suche in „Alle Eingänge"
+let txnFilter = 'unassigned'; // 'all' | 'unassigned' | 'assigned'
+
+// Eingänge (amount > 0) dauerhaft speichern, damit sie später einseh-/zuordenbar sind.
+function persistTxns(txns) {
+  if (!state.transactions || typeof state.transactions !== 'object') state.transactions = {};
+  for (const t of txns) {
+    if (!(t.amount > 0)) continue;
+    state.transactions[t.id] = { id: t.id, date: t.date, name: t.name || '', iban: t.iban || '', purpose: t.purpose || '', amount: t.amount };
+  }
+}
+
+// Map: txnId -> [{ personId, month }] aus dem Ledger (matchedTxnId = aus Import gebucht).
+function assignedMap() {
+  const map = {};
+  for (const [pid, months] of Object.entries(state.ledger || {})) {
+    for (const [m, e] of Object.entries(months || {})) {
+      if (e && e.matchedTxnId) (map[e.matchedTxnId] = map[e.matchedTxnId] || []).push({ personId: pid, month: m });
+    }
+  }
+  return map;
+}
+function findAnyTxn(id) {
+  return (parsed && parsed.txns.find((t) => t.id === id)) || (state.transactions && state.transactions[id]) || null;
+}
+function personName(pid) {
+  const p = state.people.find((x) => x.id === pid);
+  return p ? (p.name || '(ohne Name)') + (p.category ? ' · ' + p.category : '') : '?';
+}
 
 export function setImportMonth(delta) {
   importMonth = shiftMonth(importMonth, delta);
@@ -49,6 +78,59 @@ export function renderImport() {
       ${lastDkbBookingLine()}
       ${latestInvoiceLine()}
       ${parsed ? resultsHtml() : hintHtml()}
+      ${storedIncomeHtml()}
+    </div>`;
+}
+
+// Dauerhafte, durchsuchbare Liste aller importierten Eingänge (zuordnen/aufteilen).
+function storedIncomeHtml() {
+  const all = Object.values(state.transactions || {});
+  if (!all.length) return '';
+  const amap = assignedMap();
+  const q = txnQuery.trim().toLowerCase();
+  const list = all.filter((t) => {
+    const isAssigned = !!amap[t.id];
+    if (txnFilter === 'unassigned' && isAssigned) return false;
+    if (txnFilter === 'assigned' && !isAssigned) return false;
+    if (q) {
+      const hay = `${t.name} ${t.purpose} ${fmtEUR(t.amount)} ${fmtDate(t.date)} ${t.date}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const total = all.length;
+  const unassigned = all.filter((t) => !amap[t.id]).length;
+  const shown = list.slice(0, 200);
+  const chip = (f, label, n) => `<button class="catchip ${txnFilter === f ? 'catchip-active' : ''}" onclick="setTxnFilter('${f}')">${label} <span class="cc-count">${n}</span></button>`;
+  const rows = shown.map((t) => {
+    const tgt = amap[t.id];
+    const right = tgt
+      ? `<span class="muted small">→ ${tgt.map((x) => escapeHtml(personName(x.personId)) + ' (' + escapeHtml(monthLabel(x.month)) + ')').join(', ')}</span>`
+      : `<div class="imp-btns">
+          <button class="btn btn-sm btn-primary" onclick="assignStored('${t.id}')">Zuordnen</button>
+          <button class="btn btn-sm btn-ghost" onclick="splitStored('${t.id}')">Aufteilen</button>
+        </div>`;
+    return `<div class="imp-row">
+      <span class="dash-dot" style="--sc:${tgt ? '#2fb86b' : '#5b6270'}"></span>
+      <div class="dash-meta"><b>${fmtEUR(t.amount)}</b>
+        <small>${escapeHtml(fmtDate(t.date))} · ${escapeHtml(t.name || '—')}${t.purpose ? ' · ' + escapeHtml(t.purpose) : ''}</small></div>
+      <div class="imp-right">${right}</div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="section-label">Alle Eingänge (${total}${unassigned ? ` · ${unassigned} offen` : ''})</div>
+    <div class="card">
+      <div class="search-wrap">${ICO.search}
+        <input id="txnSearch" type="search" placeholder="Name, Zweck, Betrag, Datum…" value="${escapeHtml(txnQuery)}" oninput="setTxnQuery(this.value)" autocomplete="off"></div>
+      <div class="cat-chips" style="margin-top:10px">
+        ${chip('all', 'Alle', total)}
+        ${chip('unassigned', 'Nicht zugeordnet', unassigned)}
+        ${chip('assigned', 'Zugeordnet', total - unassigned)}
+      </div>
+    </div>
+    <div class="imp-list">
+      ${rows || '<p class="muted small">Keine passenden Eingänge.</p>'}
+      ${list.length > shown.length ? `<p class="muted small" style="margin-top:8px">… ${list.length - shown.length} weitere – Suche eingrenzen.</p>` : ''}
     </div>`;
 }
 
@@ -279,6 +361,8 @@ export function pickImportFile() {
         busy = false; parsed = null; renderImport(); return;
       }
       parsed = { txns, fileName: file.name };
+      persistTxns(txns);
+      save();
       recompute();
       toast(`${txns.length} Buchungen gelesen`, 'ok');
     } catch (e) {
@@ -449,7 +533,7 @@ export function saveIncome(txnId) {
 let splitState = null;
 
 function splitTxn() {
-  return splitState && (parsed && parsed.txns.find((t) => t.id === splitState.txnId));
+  return splitState && findAnyTxn(splitState.txnId);
 }
 function splitPeopleOptions(sel) {
   const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
@@ -457,6 +541,7 @@ function splitPeopleOptions(sel) {
     `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${escapeHtml((p.name || '(ohne Name)') + (p.category ? ' · ' + p.category : ''))}</option>`).join('');
 }
 function splitModalHtml(txn) {
+  const m = splitState.month || importMonth;
   const rows = splitState.rows.map((r, i) => `
     <div class="fld-row" style="align-items:flex-end">
       <label class="fld" style="flex:2"><span>Person / Kategorie</span><select name="split_${i}_person">${splitPeopleOptions(r.personId)}</select></label>
@@ -464,11 +549,11 @@ function splitModalHtml(txn) {
       <button type="button" class="icon-btn danger" onclick="removeSplitRow(${i})" aria-label="Zeile entfernen">${ICO.trash}</button>
     </div>`).join('');
   return `
-    <p class="muted small" style="margin:0 0 10px">${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''} · gesamt <b>${fmtEUR(txn.amount)}</b> · Monat ${escapeHtml(monthLabel(importMonth))}</p>
+    <p class="muted small" style="margin:0 0 10px">${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''} · gesamt <b>${fmtEUR(txn.amount)}</b> · Monat ${escapeHtml(monthLabel(m))}</p>
     <form id="splitForm" onsubmit="return false">
       ${rows}
       <button type="button" class="btn btn-ghost btn-sm" onclick="addSplitRow()">${ICO.plus} Zeile</button>
-      <p class="muted small" style="margin:8px 0 0">Jede Zeile wird dem gewählten Eintrag (Person + Kategorie) im Monat ${escapeHtml(monthLabel(importMonth))} gutgeschrieben.</p>
+      <p class="muted small" style="margin:8px 0 0">Jede Zeile wird dem gewählten Eintrag (Person + Kategorie) im Monat ${escapeHtml(monthLabel(m))} gutgeschrieben.</p>
       <div class="modal-actions" style="margin-top:12px">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
         <button type="button" class="btn btn-primary" onclick="saveSplit()">Buchen</button>
@@ -487,7 +572,7 @@ function readSplitDom() {
 export function splitUnmatched(txnId) {
   const txn = (result && result.unmatched.find((t) => t.id === txnId)) || parsed.txns.find((t) => t.id === txnId);
   if (!txn) return;
-  splitState = { txnId, rows: [{ personId: '', amount: 0 }, { personId: '', amount: 0 }] };
+  splitState = { txnId, month: importMonth, rows: [{ personId: '', amount: 0 }, { personId: '', amount: 0 }] };
   openModal('Eingang aufteilen', splitModalHtml(txn), { onClose: () => { splitState = null; } });
 }
 export function addSplitRow() {
@@ -505,11 +590,12 @@ export function saveSplit() {
   readSplitDom();
   const txn = splitTxn();
   if (!txn) { closeModal(); return; }
+  const month = splitState.month || importMonth;
   let n = 0;
   for (const r of splitState.rows) {
     if (r.personId && r.amount > 0) {
-      const prev = getReceived(r.personId, importMonth) || {};
-      setReceived(r.personId, importMonth, { received: (Number(prev.received) || 0) + r.amount, receivedDate: txn.date, matchedTxnId: txn.id });
+      const prev = getReceived(r.personId, month) || {};
+      setReceived(r.personId, month, { received: (Number(prev.received) || 0) + r.amount, receivedDate: txn.date, matchedTxnId: txn.id });
       n++;
     }
   }
@@ -522,6 +608,47 @@ export function saveSplit() {
   toast(`Auf ${n} Einträge gebucht`, 'ok');
 }
 
+// ---- „Alle Eingänge"-Liste: Suche/Filter/Zuordnen -------------------------
+export function setTxnQuery(v) {
+  txnQuery = v;
+  renderImport();
+  const el = document.getElementById('txnSearch');
+  if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
+export function setTxnFilter(f) { txnFilter = f; renderImport(); }
+
+export function assignStored(id) {
+  const txn = findAnyTxn(id);
+  if (!txn) return;
+  const m = monthKey(txn.date);
+  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  openModal(`${fmtEUR(txn.amount)} zuordnen`, `
+    <p class="muted small" style="margin:0 0 12px">${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''} · Monat ${escapeHtml(monthLabel(m))}</p>
+    <div class="pick-list">
+      ${people.map((p) => `<button class="pick-row" onclick="assignStoredTo('${txn.id}','${p.id}')">${escapeHtml(p.name || '(ohne Name)')}${p.category ? ` · ${escapeHtml(p.category)}` : ''}<span class="muted small">${fmtEUR(expectedForMonth(p, m))}</span></button>`).join('') || '<p class="muted small">Keine Personen vorhanden.</p>'}
+    </div>`);
+}
+export function assignStoredTo(id, personId) {
+  const txn = findAnyTxn(id);
+  const person = state.people.find((p) => p.id === personId);
+  if (!txn || !person) return;
+  const m = monthKey(txn.date);
+  const prev = getReceived(personId, m) || {};
+  setReceived(personId, m, { received: (Number(prev.received) || 0) + txn.amount, receivedDate: txn.date, matchedTxnId: txn.id });
+  learnFromAssignment(person, txn);
+  save();
+  closeModal();
+  if (result) result.unmatched = result.unmatched.filter((t) => t.id !== id);
+  afterChange();
+  toast(`Zugeordnet · ${monthLabel(m)}`, 'ok');
+}
+export function splitStored(id) {
+  const txn = findAnyTxn(id);
+  if (!txn) return;
+  splitState = { txnId: id, month: monthKey(txn.date), rows: [{ personId: '', amount: 0 }, { personId: '', amount: 0 }] };
+  openModal('Eingang aufteilen', splitModalHtml(txn), { onClose: () => { splitState = null; } });
+}
+
 function afterChange() {
   renderImport();
   rerenderDashboard();
@@ -532,5 +659,6 @@ Object.assign(window, {
   renderImport, setImportMonth, pickImportFile, bookAssignment, bookAll,
   rejectAssignment, assignUnmatched, assignUnmatchedTo,
   openManualPayment, saveManualPayment, declareIncome, saveIncome,
-  splitUnmatched, addSplitRow, removeSplitRow, saveSplit
+  splitUnmatched, addSplitRow, removeSplitRow, saveSplit,
+  setTxnQuery, setTxnFilter, assignStored, assignStoredTo, splitStored
 });
