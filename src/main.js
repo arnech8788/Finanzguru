@@ -55,6 +55,7 @@ export function load() {
   if (state.settings.dateGraceDays == null) state.settings.dateGraceDays = 5;
   if (!Array.isArray(state.invoices)) state.invoices = [];
   if (!state.invoiceMap || typeof state.invoiceMap !== 'object') state.invoiceMap = {};
+  if (!state.transactions || typeof state.transactions !== 'object') state.transactions = {};
   ensureNotifDefaults(state);
   state.schema = 1;
 }
@@ -67,6 +68,7 @@ export function applyImportedState(partial) {
   if (partial.settings && typeof partial.settings === 'object') state.settings = { ...state.settings, ...partial.settings };
   if (Array.isArray(partial.invoices)) state.invoices = partial.invoices;
   if (partial.invoiceMap && typeof partial.invoiceMap === 'object') state.invoiceMap = { ...state.invoiceMap, ...partial.invoiceMap };
+  if (partial.transactions && typeof partial.transactions === 'object') state.transactions = partial.transactions;
   if (partial.notifications && typeof partial.notifications === 'object') { state.notifications = partial.notifications; ensureNotifDefaults(state); }
   save();
   renderActive(currentScreen);
@@ -139,8 +141,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.19.0';
+const APP_VERSION = '1.20.0';
 const CHANGELOG = [
+  ['1.20.0', 'Alle Eingänge einsehen & durchsuchen: Importierte DKB-Eingänge werden jetzt dauerhaft gespeichert. Im Import-Tab gibt es unten die Liste „Alle Eingänge" mit Suche (Name, Zweck, Betrag, Datum) und Filter „Nicht zugeordnet / Zugeordnet". Nicht zugeordnete Eingänge kannst du direkt aus der Liste zuordnen oder aufteilen – jederzeit, auch später. (Technisch: stabile, inhaltsbasierte IDs, damit ein erneuter Import keine Dubletten erzeugt.)'],
   ['1.19.0', 'Mehrere Kategorien je Person: Beim DKB-Import wird jetzt in den Zuordnungs-Listen die Kategorie mit angezeigt, und ein Eingang lässt sich per „Aufteilen" auf mehrere Einträge verteilen (z. B. 23 € = 18 € Mobilfunk + 5 € Spotify). In der Soll/Ist-Matrix steht die Kategorie unter dem Namen, damit gleichnamige Einträge unterscheidbar sind. Für getrennte Kategorien einer Person legst du je Kategorie einen Eintrag an (Import → „+ Einnahme" bzw. Personen); nachträglich umbuchen geht direkt über die jeweilige Kategorie-Zeile.'],
   ['1.18.0', 'Kontakt pro Person: Im Personen-Editor kannst du jetzt „Kontakt über" (WhatsApp, Telegram, Signal, SMS, Telefon, E-Mail) und optional eine Nummer bzw. einen abweichenden Namen/Handle hinterlegen. In der Personen-Ansicht wird daraus – wo möglich – ein anklickbarer Link (öffnet den Chat direkt). Bei WhatsApp/Telefon wird automatisch die SIM-Nummer der Person genutzt, wenn du nichts anderes einträgst.'],
   ['1.17.0', '„bezahlt bis" für alle: In der Soll/Ist-Tabelle steht jetzt bei jeder Person unter dem Namen „bis <Monat>" – bis zu welchem Monat sie durchgehend gedeckt ist (bezahlt oder im Voraus). Vorher gab es das nur im Guthaben-Modell; jetzt auch für vierteljährlich (z. B. Raymond: bis Aug), monatlich usw.'],

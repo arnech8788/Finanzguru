@@ -15,6 +15,7 @@ export function exportBackup() {
     settings: state.settings,
     invoices: state.invoices,
     invoiceMap: state.invoiceMap,
+    transactions: state.transactions,
     exported: Date.now()
   }, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
@@ -84,7 +85,8 @@ export function importData() {
           costs: obj.costs && typeof obj.costs === 'object' ? obj.costs : state.costs,
           settings: obj.settings && typeof obj.settings === 'object' ? obj.settings : state.settings,
           invoices: Array.isArray(obj.invoices) ? obj.invoices : state.invoices,
-          invoiceMap: obj.invoiceMap && typeof obj.invoiceMap === 'object' ? obj.invoiceMap : state.invoiceMap
+          invoiceMap: obj.invoiceMap && typeof obj.invoiceMap === 'object' ? obj.invoiceMap : state.invoiceMap,
+          transactions: obj.transactions && typeof obj.transactions === 'object' ? obj.transactions : state.transactions
         });
         toast('Import erfolgreich', 'ok');
       } else {
