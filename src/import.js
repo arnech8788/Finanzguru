@@ -634,6 +634,7 @@ export function assignStoredTo(id, personId) {
   if (!txn || !person) return;
   const m = monthKey(txn.date);
   const prev = getReceived(personId, m) || {};
+  if (prev.matchedTxnId === txn.id) { toast('Dieser Eingang ist hier bereits gebucht', ''); closeModal(); return; }
   setReceived(personId, m, { received: (Number(prev.received) || 0) + txn.amount, receivedDate: txn.date, matchedTxnId: txn.id });
   learnFromAssignment(person, txn);
   save();

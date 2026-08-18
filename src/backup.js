@@ -5,6 +5,7 @@ import { parseEUR, fmtEUR } from './money.js';
 import { scheduleLabel } from './data/schedules.js';
 import { parseMobilfunkPdf, buildImportFromLog } from './parseTable.js';
 import { parseCardsTable, planCardImport, buildCardImport } from './parseCards.js';
+import { findDoubledBookings, applyDedupe } from './ledger.js';
 
 export function exportBackup() {
   const data = JSON.stringify({
@@ -230,7 +231,21 @@ export function applyCardImport() {
   toast(`Karten-Details importiert${neu ? ` · ${neu} neue Person(en)` : ''}`, 'ok');
 }
 
+// Einmal-Reparatur: doppelt gezählte Buchungen (nach ID-Wechsel + Neu-Zuordnung).
+export async function repairDoubles() {
+  const hits = findDoubledBookings();
+  if (!hits.length) { toast('Keine eindeutig doppelten Buchungen gefunden', 'ok'); return; }
+  const sum = hits.reduce((a, h) => a + (h.from - h.to), 0);
+  const ok = await confirmDialog(
+    `${hits.length} doppelte Buchung(en) gefunden – jeweils exakt 2× der zugeordneten Zahlung (zu viel gezählt: ${fmtEUR(sum)}). Auf den richtigen Betrag korrigieren? Aufteilungen und uneindeutige Fälle bleiben unangetastet.`,
+    { okLabel: 'Korrigieren' });
+  if (!ok) return;
+  applyDedupe(hits);
+  applyImportedState({ ledger: state.ledger });
+  toast(`${hits.length} Buchung(en) korrigiert`, 'ok');
+}
+
 Object.assign(window, {
   exportBackup, importData, importTablePdf, applyTableImport,
-  openCardImport, previewCardImport, applyCardImport
+  openCardImport, previewCardImport, applyCardImport, repairDoubles
 });

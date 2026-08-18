@@ -141,8 +141,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.20.0';
+const APP_VERSION = '1.20.1';
 const CHANGELOG = [
+  ['1.20.1', 'Fix + Reparatur für doppelt gezählte Buchungen: Durch den ID-Wechsel beim Update konnten bereits gebuchte Eingänge nach einem Re-Import als „nicht zugeordnet" erscheinen und beim erneuten Zuordnen doppelt gezählt werden. Neu unter „Mehr → Daten → Doppelte Buchungen bereinigen": findet Zellen, deren Betrag exakt 2× der zugeordneten Zahlung ist, und korrigiert sie (Aufteilungen/uneindeutige Fälle bleiben unangetastet). Außerdem verhindert die App jetzt, denselben Eingang erneut in dieselbe Zelle zu buchen.'],
   ['1.20.0', 'Alle Eingänge einsehen & durchsuchen: Importierte DKB-Eingänge werden jetzt dauerhaft gespeichert. Im Import-Tab gibt es unten die Liste „Alle Eingänge" mit Suche (Name, Zweck, Betrag, Datum) und Filter „Nicht zugeordnet / Zugeordnet". Nicht zugeordnete Eingänge kannst du direkt aus der Liste zuordnen oder aufteilen – jederzeit, auch später. (Technisch: stabile, inhaltsbasierte IDs, damit ein erneuter Import keine Dubletten erzeugt.)'],
   ['1.19.0', 'Mehrere Kategorien je Person: Beim DKB-Import wird jetzt in den Zuordnungs-Listen die Kategorie mit angezeigt, und ein Eingang lässt sich per „Aufteilen" auf mehrere Einträge verteilen (z. B. 23 € = 18 € Mobilfunk + 5 € Spotify). In der Soll/Ist-Matrix steht die Kategorie unter dem Namen, damit gleichnamige Einträge unterscheidbar sind. Für getrennte Kategorien einer Person legst du je Kategorie einen Eintrag an (Import → „+ Einnahme" bzw. Personen); nachträglich umbuchen geht direkt über die jeweilige Kategorie-Zeile.'],
   ['1.18.0', 'Kontakt pro Person: Im Personen-Editor kannst du jetzt „Kontakt über" (WhatsApp, Telegram, Signal, SMS, Telefon, E-Mail) und optional eine Nummer bzw. einen abweichenden Namen/Handle hinterlegen. In der Personen-Ansicht wird daraus – wo möglich – ein anklickbarer Link (öffnet den Chat direkt). Bei WhatsApp/Telefon wird automatisch die SIM-Nummer der Person genutzt, wenn du nichts anderes einträgst.'],
@@ -238,6 +239,7 @@ export function renderMore() {
         <button class="row-btn" onclick="importData()"><span class="row-ic">${ICO.upload}</span><span>Daten importieren (JSON / CSV)</span><span class="row-arrow">Datei</span></button>
         <button class="row-btn" onclick="importTablePdf()"><span class="row-ic">${ICO.card}</span><span>Mobilfunk-Tabelle (PDF) importieren</span><span class="row-arrow">PDF</span></button>
         <button class="row-btn" onclick="openCardImport()"><span class="row-ic">${ICO.sim}</span><span>Karten-Details importieren (Tabelle einfügen)</span><span class="row-arrow">Einfügen</span></button>
+        <button class="row-btn" onclick="repairDoubles()"><span class="row-ic">${ICO.check}</span><span>Doppelte Buchungen bereinigen</span><span class="row-arrow">Prüfen</span></button>
       </div>
 
       <div class="card">
