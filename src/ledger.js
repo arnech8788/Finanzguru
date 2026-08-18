@@ -59,6 +59,38 @@ export function clearReceived(personId, month) {
   if (b) delete b[month];
 }
 
+// ---- Reparatur: doppelt gezählte Buchungen ---------------------------------
+// Findet Zellen, deren „Erhalten" exakt das 2-fache der zugeordneten (gespeicherten)
+// Transaktion ist – entstanden durch erneutes Zuordnen nach dem ID-Wechsel.
+// Aufteilungen (eine Transaktion auf mehrere Zellen) werden bewusst ausgelassen.
+export function findDoubledBookings() {
+  const store = state.transactions || {};
+  const refs = {};
+  for (const months of Object.values(state.ledger || {})) {
+    for (const e of Object.values(months || {})) {
+      if (e && e.matchedTxnId) refs[e.matchedTxnId] = (refs[e.matchedTxnId] || 0) + 1;
+    }
+  }
+  const hits = [];
+  for (const [pid, months] of Object.entries(state.ledger || {})) {
+    for (const [m, e] of Object.entries(months || {})) {
+      const id = e && e.matchedTxnId;
+      if (!id || !store[id] || refs[id] !== 1) continue;
+      const amt = Number(store[id].amount) || 0;
+      const rec = Number(e.received) || 0;
+      if (amt > 0 && Math.abs(rec - 2 * amt) < 0.011) hits.push({ pid, m, from: rec, to: amt });
+    }
+  }
+  return hits;
+}
+export function applyDedupe(hits) {
+  for (const h of hits) {
+    const e = state.ledger[h.pid] && state.ledger[h.pid][h.m];
+    if (e) e.received = h.to;
+  }
+  save();
+}
+
 // ---- Guthaben-Modell (Prepaid) --------------------------------------------
 // Erster Monat, ab dem verbraucht wird: startMonth oder frühester Zahlungsmonat.
 function prepaidStart(person) {
