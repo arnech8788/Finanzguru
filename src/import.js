@@ -1,6 +1,6 @@
 // DKB-Import: Datei (PDF/CSV) einlesen, mit erwarteten Zahlungen abgleichen,
 // Eingänge buchen und unbekannte Eingänge manuell zuordnen.
-import { ICO, escapeHtml, openModal, closeModal, toast } from './ui.js';
+import { ICO, escapeHtml, openModal, closeModal, updateModalBody, toast } from './ui.js';
 import { state, save, rerenderDashboard, showScreen } from './main.js';
 import { fmtEUR, parseEUR, fmtDate, monthLabel, currentMonth, shiftMonth, todayISO } from './money.js';
 import { expectedForMonth, SCHEDULES } from './data/schedules.js';
@@ -222,7 +222,7 @@ function peopleRow({ p, exp, a }) {
   return `<div class="imp-row" style="--sc:${meta.color}">
     <span class="dash-dot"></span>
     <div class="dash-meta"><b>${escapeHtml(p.name || '(ohne Name)')}</b>
-      <small>Soll ${exp > 0 ? fmtEUR(exp) : '–'}${a && !booked ? ` · erkannt: ${escapeHtml(a.txn.name || a.txn.purpose || 'Eingang')}` : ''}</small></div>
+      <small>${p.category ? escapeHtml(p.category) + ' · ' : ''}Soll ${exp > 0 ? fmtEUR(exp) : '–'}${a && !booked ? ` · erkannt: ${escapeHtml(a.txn.name || a.txn.purpose || 'Eingang')}` : ''}</small></div>
     <div class="imp-right">${right}</div>
   </div>`;
 }
@@ -234,6 +234,7 @@ function unmatchedRow(txn) {
       <small>${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''}</small></div>
     <div class="imp-right" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
       <button class="btn btn-sm btn-ghost" onclick="assignUnmatched('${txn.id}')">Zuordnen</button>
+      <button class="btn btn-sm btn-ghost" onclick="splitUnmatched('${txn.id}')" title="Auf mehrere Kategorien aufteilen">Aufteilen</button>
       <button class="btn btn-sm btn-ghost" onclick="declareIncome('${txn.id}')" title="Als regelmäßige Einnahme anlegen">+ Einnahme</button>
     </div>
   </div>`;
@@ -345,7 +346,7 @@ export function assignUnmatched(txnId) {
     <p class="muted small" style="margin:0 0 12px">${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''}</p>
     <div class="pick-list">
       ${people.map((p) => `<button class="pick-row" onclick="assignUnmatchedTo('${txn.id}','${p.id}')">
-        ${escapeHtml(p.name || '(ohne Name)')}<span class="muted small">${fmtEUR(expectedForMonth(p, importMonth))}</span></button>`).join('')
+        ${escapeHtml(p.name || '(ohne Name)')}${p.category ? ` · ${escapeHtml(p.category)}` : ''}<span class="muted small">${fmtEUR(expectedForMonth(p, importMonth))}</span></button>`).join('')
         || '<p class="muted small">Keine Personen vorhanden.</p>'}
     </div>`);
 }
@@ -444,6 +445,83 @@ export function saveIncome(txnId) {
   toast('Einnahme angelegt & gebucht', 'ok');
 }
 
+// ---- Eingang auf mehrere Kategorien/Einträge aufteilen --------------------
+let splitState = null;
+
+function splitTxn() {
+  return splitState && (parsed && parsed.txns.find((t) => t.id === splitState.txnId));
+}
+function splitPeopleOptions(sel) {
+  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  return `<option value="">— Person / Kategorie —</option>` + people.map((p) =>
+    `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${escapeHtml((p.name || '(ohne Name)') + (p.category ? ' · ' + p.category : ''))}</option>`).join('');
+}
+function splitModalHtml(txn) {
+  const rows = splitState.rows.map((r, i) => `
+    <div class="fld-row" style="align-items:flex-end">
+      <label class="fld" style="flex:2"><span>Person / Kategorie</span><select name="split_${i}_person">${splitPeopleOptions(r.personId)}</select></label>
+      <label class="fld"><span>Betrag (€)</span><input name="split_${i}_amount" type="text" inputmode="decimal" value="${r.amount ? String(r.amount).replace('.', ',') : ''}"></label>
+      <button type="button" class="icon-btn danger" onclick="removeSplitRow(${i})" aria-label="Zeile entfernen">${ICO.trash}</button>
+    </div>`).join('');
+  return `
+    <p class="muted small" style="margin:0 0 10px">${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''} · gesamt <b>${fmtEUR(txn.amount)}</b> · Monat ${escapeHtml(monthLabel(importMonth))}</p>
+    <form id="splitForm" onsubmit="return false">
+      ${rows}
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addSplitRow()">${ICO.plus} Zeile</button>
+      <p class="muted small" style="margin:8px 0 0">Jede Zeile wird dem gewählten Eintrag (Person + Kategorie) im Monat ${escapeHtml(monthLabel(importMonth))} gutgeschrieben.</p>
+      <div class="modal-actions" style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="button" class="btn btn-primary" onclick="saveSplit()">Buchen</button>
+      </div>
+    </form>`;
+}
+function readSplitDom() {
+  const f = document.getElementById('splitForm');
+  if (!f || !splitState) return;
+  const fd = new FormData(f);
+  splitState.rows.forEach((r, i) => {
+    r.personId = (fd.get(`split_${i}_person`) || '').toString();
+    r.amount = parseEUR((fd.get(`split_${i}_amount`) || '0').toString()) || 0;
+  });
+}
+export function splitUnmatched(txnId) {
+  const txn = (result && result.unmatched.find((t) => t.id === txnId)) || parsed.txns.find((t) => t.id === txnId);
+  if (!txn) return;
+  splitState = { txnId, rows: [{ personId: '', amount: 0 }, { personId: '', amount: 0 }] };
+  openModal('Eingang aufteilen', splitModalHtml(txn), { onClose: () => { splitState = null; } });
+}
+export function addSplitRow() {
+  readSplitDom();
+  splitState.rows.push({ personId: '', amount: 0 });
+  updateModalBody(splitModalHtml(splitTxn()));
+}
+export function removeSplitRow(i) {
+  readSplitDom();
+  splitState.rows.splice(i, 1);
+  if (!splitState.rows.length) splitState.rows.push({ personId: '', amount: 0 });
+  updateModalBody(splitModalHtml(splitTxn()));
+}
+export function saveSplit() {
+  readSplitDom();
+  const txn = splitTxn();
+  if (!txn) { closeModal(); return; }
+  let n = 0;
+  for (const r of splitState.rows) {
+    if (r.personId && r.amount > 0) {
+      const prev = getReceived(r.personId, importMonth) || {};
+      setReceived(r.personId, importMonth, { received: (Number(prev.received) || 0) + r.amount, receivedDate: txn.date, matchedTxnId: txn.id });
+      n++;
+    }
+  }
+  if (!n) { toast('Keine Aufteilung eingetragen', 'err'); return; }
+  save();
+  if (result) result.unmatched = result.unmatched.filter((t) => t.id !== txn.id);
+  splitState = null;
+  closeModal();
+  afterChange();
+  toast(`Auf ${n} Einträge gebucht`, 'ok');
+}
+
 function afterChange() {
   renderImport();
   rerenderDashboard();
@@ -453,5 +531,6 @@ function afterChange() {
 Object.assign(window, {
   renderImport, setImportMonth, pickImportFile, bookAssignment, bookAll,
   rejectAssignment, assignUnmatched, assignUnmatchedTo,
-  openManualPayment, saveManualPayment, declareIncome, saveIncome
+  openManualPayment, saveManualPayment, declareIncome, saveIncome,
+  splitUnmatched, addSplitRow, removeSplitRow, saveSplit
 });

@@ -163,7 +163,8 @@ export function renderLedger() {
         onclick="openLedgerCell('${person.id}','${m}')" title="${escapeHtml(meta.label)}">${escapeHtml(label)}</button></td>`;
     }).join('');
     const cu = coveredUntil(person, currentMonth());
-    const subTxt = cu ? 'bis ' + monthShort(cu) : (person.schedule === 'prepaid' ? 'Guthaben leer' : '');
+    const cov = cu ? 'bis ' + monthShort(cu) : (person.schedule === 'prepaid' ? 'Guthaben leer' : '');
+    const subTxt = [person.category, cov].filter(Boolean).join(' · ');
     const sub = subTxt ? `<div style="font-weight:400;font-size:10px;color:var(--tx3);margin-top:2px">${escapeHtml(subTxt)}</div>` : '';
     return `<tr><th class="lg-name" onclick="openPerson('${person.id}')">${escapeHtml(person.name || '(ohne Name)')}${sub}</th>${cells}</tr>`;
   }).join('');
