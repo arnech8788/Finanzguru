@@ -139,17 +139,20 @@ export function prepaidStats(person) {
   return { rate: r, totalPaid, coveredMonths, coveredUntil, next, leftover, neededForNext };
 }
 
+// Topf-Prinzip: Gesamte Einnahmen ab Startmonat werden Monat für Monat mit der
+// Rate „verbraucht" – egal, in welchem Monat die einzelne Zahlung gebucht ist.
 function prepaidCellStatus(person, month) {
   const start = prepaidStart(person);
-  const r = monthlyAmount(person, month);
   const entry = getReceived(person.id, month) || {};
   const recvThis = entry.received || 0;
-  if (r <= 0 || monthIndex(month) < monthIndex(start)) return recvThis > 0 ? 'paid' : (entry.covered ? 'advance' : 'none');
-  const after = prepaidBalance(person, month);
-  if (after >= -0.005) return recvThis >= r - 0.005 ? 'paid' : 'advance';
-  if (entry.covered) return 'advance'; // manuell als vorausbezahlt markiert
-  const before = after - recvThis + r; // Guthaben am Ende des Vormonats
-  return (before + recvThis) > 0.005 ? 'partial' : 'open';
+  if (monthIndex(month) < monthIndex(start)) return recvThis > 0 ? 'paid' : (entry.covered ? 'advance' : 'none');
+  const s = prepaidStats(person);
+  if (s.rate <= 0) return recvThis > 0 ? 'paid' : 'none';
+  const idx = monthIndex(month) - monthIndex(start);
+  if (idx < s.coveredMonths) return recvThis > 0 ? 'paid' : 'advance';       // voll gedeckt
+  if (idx === s.coveredMonths && s.leftover > 0.005) return recvThis > 0 ? 'paid' : 'partial'; // Rest-Guthaben
+  if (entry.covered) return 'advance';
+  return recvThis > 0 ? 'paid' : 'open';
 }
 
 // ---- Status ---------------------------------------------------------------
@@ -269,11 +272,13 @@ export function openLedgerCell(personId, month) {
         <label class="fld"><span>am</span><input name="date" type="date" value="${escapeHtml(entry.receivedDate || '')}"></label>
       </div>
       <label class="fld"><span>Notiz (optional)</span><input name="note" type="text" value="${escapeHtml(entry.note || '')}" placeholder="z. B. per PayPal"></label>
-      <label class="fld"><span>Zahlung gilt für Monat</span><input name="applyMonth" type="month" value="${escapeHtml(month)}"></label>
+      ${person.schedule === 'prepaid'
+        ? `<p class="muted small" style="margin:2px 0 8px">Guthaben-Modell: Trag einfach den erhaltenen Betrag im Zahlungsmonat ein – die App addiert alle Zahlungen und verteilt sie automatisch auf die Folgemonate. Kein „gilt für Monat" oder „Voraus" nötig.</p>`
+        : `<label class="fld"><span>Zahlung gilt für Monat</span><input name="applyMonth" type="month" value="${escapeHtml(month)}"></label>
       <p class="muted small" style="margin:2px 0 8px">Standard: dieser Monat. Bei einer Vorauszahlung für einen späteren Monat hier den Zielmonat wählen (z. B. Beginn des im Voraus bezahlten Quartals) – der Eintrag wird dann dort verbucht.</p>
       <label class="cost-row" style="margin:2px 0 8px"><span>Als vorausbezahlt („Voraus") markieren</span>
         <input type="checkbox" name="covered" ${entry.covered ? 'checked' : ''}></label>
-      <p class="muted small" style="margin:0 0 8px">Für Monate, die durch eine frühere Zahlung bereits abgedeckt sind – zeigt „Voraus" statt „offen", ohne dass hier ein Betrag stehen muss.</p>
+      <p class="muted small" style="margin:0 0 8px">Für Monate, die durch eine frühere Zahlung bereits abgedeckt sind – zeigt „Voraus" statt „offen", ohne dass hier ein Betrag stehen muss.</p>`}
       <details class="advanced"${extra > 0 ? ' open' : ''}>
         <summary>Einmaliger Zusatz-Soll (z. B. Bereitstellung, Versand, neue Karten)</summary>
         <div class="fld-row" style="margin-top:8px">
