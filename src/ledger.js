@@ -120,6 +120,25 @@ export function prepaidCoveredUntil(person, refMonth) {
   if (bal < -0.005) return null;
   return shiftMonth(refMonth, Math.floor((bal + 0.005) / r));
 }
+// Kennzahlen für Intervall-/Guthaben-Zahler (krumme Summen über mehrere Monate):
+// Gesamt gezahlt, wie viele volle Monate gedeckt, Rest-Guthaben, was fürs
+// nächste (Teil-)Monat noch fehlt. Reines „Topf"-Modell (Summe / Monatsrate).
+export function prepaidStats(person) {
+  const start = prepaidStart(person);
+  const r = monthlyAmount(person, currentMonth()) || 0;
+  const b = state.ledger[person.id] || {};
+  const si = monthIndex(start);
+  let totalPaid = 0;
+  for (const m of Object.keys(b)) if (monthIndex(m) >= si) totalPaid += Number(b[m].received) || 0;
+  if (!(r > 0)) return { rate: 0, totalPaid, coveredMonths: 0, coveredUntil: null, next: start, leftover: totalPaid, neededForNext: 0 };
+  const coveredMonths = Math.max(0, Math.floor((totalPaid + 0.005) / r));
+  const leftover = Math.max(0, totalPaid - coveredMonths * r);
+  const coveredUntil = coveredMonths > 0 ? shiftMonth(start, coveredMonths - 1) : null;
+  const next = shiftMonth(start, coveredMonths);
+  const neededForNext = Math.max(0, r - leftover);
+  return { rate: r, totalPaid, coveredMonths, coveredUntil, next, leftover, neededForNext };
+}
+
 function prepaidCellStatus(person, month) {
   const start = prepaidStart(person);
   const r = monthlyAmount(person, month);

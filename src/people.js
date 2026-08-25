@@ -5,7 +5,7 @@ import { fmtEUR, parseEUR, fmtDate, currentMonth, monthLabel, shiftMonth } from 
 import { PAYMENT_METHODS, paymentMethodLabel } from './data/paymentMethods.js';
 import { SCHEDULES, scheduleLabel, expectedForMonth, monthlyAmount } from './data/schedules.js';
 import { CARD_TYPES, cardTypeLabel, SIM_KINDS, simKindLabel } from './data/cardTypes.js';
-import { statusFor, STATUS, renderLedger, prepaidBalance, prepaidCoveredUntil } from './ledger.js';
+import { statusFor, STATUS, renderLedger, prepaidStats } from './ledger.js';
 
 let filter = { query: '' };
 let draft = null; // aktuell bearbeitete Person (Arbeitskopie)
@@ -118,17 +118,21 @@ function personViewHtml(p) {
     </div>`;
 }
 
-// Guthaben-Übersicht für Prepaid-Personen (z. B. 50€-Gutschein deckt mehrere Monate).
+// Guthaben-/Intervall-Übersicht (krumme Summen über mehrere Monate).
 function prepaidInfo(p) {
-  const m = currentMonth();
-  const bal = prepaidBalance(p, m);
-  const until = prepaidCoveredUntil(p, m);
+  const s = prepaidStats(p);
+  const rows = [`Gesamt erhalten: <b>${fmtEUR(s.totalPaid)}</b>`];
+  if (s.rate > 0) {
+    rows.push(s.coveredUntil
+      ? `Gedeckt bis <b>${escapeHtml(monthLabel(s.coveredUntil))}</b> (${s.coveredMonths} Monate à ${fmtEUR(s.rate)})`
+      : 'Noch kein voller Monat gedeckt');
+    if (s.leftover > 0.005) rows.push(`Rest-Guthaben: ${fmtEUR(s.leftover)} (angerechnet auf ${escapeHtml(monthLabel(s.next))})`);
+    if (s.neededForNext > 0.005) rows.push(`Für ${escapeHtml(monthLabel(s.next))} fehlen noch: <b>${fmtEUR(s.neededForNext)}</b>`);
+    rows.push(`Nächstes Stück: 3 Mon. ${fmtEUR(Math.max(0, 3 * s.rate - s.leftover))} · 4 Mon. ${fmtEUR(Math.max(0, 4 * s.rate - s.leftover))}`);
+  }
   return `<div class="pv-block">
-    <span class="muted small">Guthaben</span>
-    <p style="margin:4px 0 0"><b>${fmtEUR(bal)}</b>${bal < -0.005
-      ? ' · <span style="color:#e23b3b">überzogen – neue Zahlung nötig</span>'
-      : (until ? ` · gedeckt bis <b>${escapeHtml(monthLabel(until))}</b>` : '')}</p>
-    ${bal >= -0.005 && until ? `<p class="muted small" style="margin:4px 0 0">Nächste Zahlung nötig ab ${escapeHtml(monthLabel(shiftMonth(until, 1)))}.</p>` : ''}
+    <span class="muted small">Guthaben / Rückzahlung</span>
+    <div class="muted small" style="margin-top:4px;line-height:1.7">${rows.join('<br>')}</div>
   </div>`;
 }
 
