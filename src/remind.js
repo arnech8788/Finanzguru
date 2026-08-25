@@ -112,3 +112,42 @@ export function computeReminders(s, now = new Date(), horizonDays = 120) {
   out.sort((a, b) => a.at.localeCompare(b.at));
   return out;
 }
+
+// Kommende Erinnerungen NUR für eine Person (unabhängig von n.enabled) – für die
+// Anzeige „wann würde eine Erinnerung kommen" in der Personen-Ansicht.
+// Nur nicht-monatliche Rhythmen (vierteljährlich/jährlich/2-monatlich) und Guthaben.
+export function personReminders(s, person, now = new Date(), horizonDays = 300) {
+  const n = ensureNotifDefaults(s);
+  const [hh, mm] = String(n.time || '09:00').split(':').map(Number);
+  const startMs = now.getTime() - 3 * 864e5;
+  const endMs = now.getTime() + horizonDays * 864e5;
+  const nowMonth = monthKey(now);
+  const out = [];
+  const per = schedulePeriod(person.schedule);
+
+  if (person.schedule === 'prepaid') {
+    const r = monthlyAmount(person, nowMonth);
+    if (r > 0) {
+      const b = (s.ledger && s.ledger[person.id]) || {};
+      const start = person.startMonth || Object.keys(b).filter((k) => (Number(b[k] && b[k].received) || 0) > 0).sort()[0] || nowMonth;
+      let recv = 0;
+      for (const k of Object.keys(b)) if (monthIndex(k) >= monthIndex(start)) recv += Number(b[k].received) || 0;
+      const coveredMonths = Math.max(0, Math.floor((recv + 0.005) / r));
+      const firstUncovered = shiftMonth(start, coveredMonths);
+      const at = atDate(firstUncovered, 1, hh, mm);
+      if (at.getTime() >= startMs && at.getTime() <= endMs) out.push({ at: at.toISOString(), type: 'prepaid' });
+    }
+  } else if (per > 1 && Number(person.expectedAmount) > 0) {
+    const lead = (n.leadDays && n.leadDays[person.schedule] != null) ? n.leadDays[person.schedule] : 7;
+    let dm = governingDueMonth(person, nowMonth);
+    for (let k = 0; k < 30; k++) {
+      const dueDate = atDate(dm, person.dayOfMonth || 1, hh, mm);
+      const remAt = new Date(dueDate.getTime() - lead * 864e5);
+      if (remAt.getTime() > endMs) break;
+      if (remAt.getTime() >= startMs && dueDate.getTime() >= now.getTime() - 3 * 864e5) out.push({ at: remAt.toISOString(), type: 'lead' });
+      dm = shiftMonth(dm, per);
+    }
+  }
+  out.sort((a, b) => a.at.localeCompare(b.at));
+  return out;
+}
