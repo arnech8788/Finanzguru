@@ -6,6 +6,7 @@ import { PAYMENT_METHODS, paymentMethodLabel } from './data/paymentMethods.js';
 import { SCHEDULES, scheduleLabel, expectedForMonth, monthlyAmount } from './data/schedules.js';
 import { CARD_TYPES, cardTypeLabel, SIM_KINDS, simKindLabel } from './data/cardTypes.js';
 import { statusFor, STATUS, renderLedger, prepaidStats } from './ledger.js';
+import { personReminders } from './remind.js';
 
 let filter = { query: '' };
 let draft = null; // aktuell bearbeitete Person (Arbeitskopie)
@@ -105,6 +106,7 @@ function personViewHtml(p) {
       ${p.category ? `<p class="muted small" style="margin:8px 0 0">Kategorie: ${escapeHtml(p.category)}</p>` : ''}
       ${contactHtml(p)}
       ${p.startMonth ? `<p class="muted small" style="margin:8px 0 0">Beitrag ab ${escapeHtml(monthLabel(p.startMonth))}</p>` : ''}
+      ${reminderInfo(p)}
       ${p.notes ? `<div class="pv-block"><span class="muted small">Notiz</span><p style="white-space:pre-wrap;margin:4px 0 0">${escapeHtml(p.notes)}</p></div>` : ''}
       <div class="pv-block">
         <span class="muted small">Karten / SIM (${cards.length})</span>
@@ -116,6 +118,17 @@ function personViewHtml(p) {
         <button class="btn btn-primary" onclick="editPerson('${p.id}')">${ICO.edit} Bearbeiten</button>
       </div>
     </div>`;
+}
+
+// Zeigt bei nicht-monatlichen Zahlern, wann die nächste Erinnerung rausginge.
+function reminderInfo(p) {
+  if (!['quarterly', 'yearly', 'bimonthly', 'prepaid'].includes(p.schedule)) return '';
+  const rem = personReminders(state, p);
+  if (!rem.length) return '';
+  const label = rem[0].type === 'prepaid' ? 'Guthaben aufgebraucht' : 'Vorlauf vor Fälligkeit';
+  const more = rem.length > 1 ? ` · danach ${escapeHtml(fmtDate(rem[1].at.slice(0, 10)))}` : '';
+  const off = (state.notifications && state.notifications.enabled) ? '' : ' · Erinnerungen aktuell aus';
+  return `<p class="muted small" style="margin:8px 0 0">🔔 Nächste Erinnerung: <b>${escapeHtml(fmtDate(rem[0].at.slice(0, 10)))}</b> (${label})${more}${off}</p>`;
 }
 
 // Guthaben-/Intervall-Übersicht (krumme Summen über mehrere Monate).
