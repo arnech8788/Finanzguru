@@ -141,8 +141,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.21.0';
+const APP_VERSION = '1.22.0';
 const CHANGELOG = [
+  ['1.22.0', 'Guthaben-Modell jetzt konsequent nach dem Topf-Prinzip: Es zählt nur noch die Summe aller Einnahmen ab dem Startmonat, verteilt Monat für Monat mit der Rate – egal, in welchem Monat die einzelne Zahlung gebucht ist. Dadurch decken Vorauszahlungen automatisch die Folgemonate in der Soll/Ist-Matrix ab (nicht mehr nur der gebuchte Monat). Kein Ankreuzen pro Monat und kein „gilt für Monat"/„Voraus" mehr nötig – diese Felder sind bei Guthaben-Personen ausgeblendet.'],
   ['1.21.0', 'Intervall-Zahler-Überblick (Guthaben-Modell): Für Personen, die krumme Summen für mehrere Monate schicken (z. B. Raymond), zeigt die Personen-Ansicht jetzt: Gesamt erhalten, bis wann gedeckt (Anzahl Monate à Rate), Rest-Guthaben und wie viel fürs nächste (Teil-)Monat noch fehlt – plus eine Schätzung für „3 / 4 weitere Monate". So siehst du direkt, wie viel für das nächste Stück nötig ist. Empfehlung: solche Zahler auf den Rhythmus „Guthaben (bei Bedarf)" mit der Monatsrate stellen.'],
   ['1.20.1', 'Fix + Reparatur für doppelt gezählte Buchungen: Durch den ID-Wechsel beim Update konnten bereits gebuchte Eingänge nach einem Re-Import als „nicht zugeordnet" erscheinen und beim erneuten Zuordnen doppelt gezählt werden. Neu unter „Mehr → Daten → Doppelte Buchungen bereinigen": findet Zellen, deren Betrag exakt 2× der zugeordneten Zahlung ist, und korrigiert sie (Aufteilungen/uneindeutige Fälle bleiben unangetastet). Außerdem verhindert die App jetzt, denselben Eingang erneut in dieselbe Zelle zu buchen.'],
   ['1.20.0', 'Alle Eingänge einsehen & durchsuchen: Importierte DKB-Eingänge werden jetzt dauerhaft gespeichert. Im Import-Tab gibt es unten die Liste „Alle Eingänge" mit Suche (Name, Zweck, Betrag, Datum) und Filter „Nicht zugeordnet / Zugeordnet". Nicht zugeordnete Eingänge kannst du direkt aus der Liste zuordnen oder aufteilen – jederzeit, auch später. (Technisch: stabile, inhaltsbasierte IDs, damit ein erneuter Import keine Dubletten erzeugt.)'],
