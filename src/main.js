@@ -141,8 +141,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.23.0';
+const APP_VERSION = '1.24.0';
 const CHANGELOG = [
+  ['1.24.0', 'Kalender-Termin für Erinnerungen: Bei zyklisch/über Guthaben zahlenden Personen kannst du in der Personen-Ansicht die nächste Erinnerung jetzt als Kalendertermin anlegen – „Google Kalender" (öffnet vorbefüllt: Titel „<Kategorie>: <Name> – Bezahlung für nächste Monate?", 12:00–12:30, Erinnerung 30 Min. + 5 Tage vorher) oder „.ics-Datei" für andere Kalender-Apps.'],
   ['1.23.0', 'Nächste Erinnerung sichtbar: Bei nicht-monatlichen Zahlern (vierteljährlich, jährlich, alle 2 Monate, Guthaben) zeigt die Personen-Ansicht jetzt „🔔 Nächste Erinnerung: <Datum>" – also wann dich die App vor der nächsten Fälligkeit bzw. beim Aufbrauchen des Guthabens erinnern würde (inkl. Folgetermin). Ist „Erinnerungen" gerade aus, steht ein Hinweis dabei.'],
   ['1.22.0', 'Guthaben-Modell jetzt konsequent nach dem Topf-Prinzip: Es zählt nur noch die Summe aller Einnahmen ab dem Startmonat, verteilt Monat für Monat mit der Rate – egal, in welchem Monat die einzelne Zahlung gebucht ist. Dadurch decken Vorauszahlungen automatisch die Folgemonate in der Soll/Ist-Matrix ab (nicht mehr nur der gebuchte Monat). Kein Ankreuzen pro Monat und kein „gilt für Monat"/„Voraus" mehr nötig – diese Felder sind bei Guthaben-Personen ausgeblendet.'],
   ['1.21.0', 'Intervall-Zahler-Überblick (Guthaben-Modell): Für Personen, die krumme Summen für mehrere Monate schicken (z. B. Raymond), zeigt die Personen-Ansicht jetzt: Gesamt erhalten, bis wann gedeckt (Anzahl Monate à Rate), Rest-Guthaben und wie viel fürs nächste (Teil-)Monat noch fehlt – plus eine Schätzung für „3 / 4 weitere Monate". So siehst du direkt, wie viel für das nächste Stück nötig ist. Empfehlung: solche Zahler auf den Rhythmus „Guthaben (bei Bedarf)" mit der Monatsrate stellen.'],

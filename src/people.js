@@ -120,7 +120,38 @@ function personViewHtml(p) {
     </div>`;
 }
 
-// Zeigt bei nicht-monatlichen Zahlern, wann die nächste Erinnerung rausginge.
+function calTitle(p) {
+  return `${p.category ? p.category + ': ' : ''}${p.name || 'Person'} – Bezahlung für nächste Monate?`;
+}
+// Google-Kalender-Vorlage-Link (öffnet vorbefüllten Termin, 12:00–12:30 Uhr).
+function gcalHref(p, atISO) {
+  const ymd = atISO.slice(0, 10).replace(/-/g, '');
+  let tz = 'Europe/Berlin';
+  try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch (e) { /* Fallback */ }
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+    + '&text=' + encodeURIComponent(calTitle(p))
+    + '&dates=' + ymd + 'T120000/' + ymd + 'T123000'
+    + '&ctz=' + encodeURIComponent(tz)
+    + '&details=' + encodeURIComponent('Rückzahlung fällig – erfasst mit Finanzguru.');
+}
+// .ics-Datei als data-URI (andere Kalender), inkl. Erinnerung 30 Min. + 5 Tage vorher.
+function icsHref(p, atISO) {
+  const ymd = atISO.slice(0, 10).replace(/-/g, '');
+  const esc = (s) => String(s).replace(/[\\,;]/g, (m) => '\\' + m);
+  const t = esc(calTitle(p));
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Finanzguru//DE', 'CALSCALE:GREGORIAN',
+    'BEGIN:VEVENT', 'UID:' + ymd + '-' + (p.id || 'x') + '@finanzguru',
+    'DTSTART:' + ymd + 'T120000', 'DTEND:' + ymd + 'T123000',
+    'SUMMARY:' + t, 'DESCRIPTION:Rückzahlung fällig – Finanzguru.',
+    'BEGIN:VALARM', 'TRIGGER:-PT30M', 'ACTION:DISPLAY', 'DESCRIPTION:' + t, 'END:VALARM',
+    'BEGIN:VALARM', 'TRIGGER:-P5D', 'ACTION:DISPLAY', 'DESCRIPTION:' + t, 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR'
+  ].join('\r\n');
+  return 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+}
+
+// Zeigt bei nicht-monatlichen Zahlern, wann die nächste Erinnerung rausginge – plus Kalender-Termin.
 function reminderInfo(p) {
   if (!['quarterly', 'yearly', 'bimonthly', 'prepaid'].includes(p.schedule)) return '';
   const rem = personReminders(state, p);
@@ -128,7 +159,12 @@ function reminderInfo(p) {
   const label = rem[0].type === 'prepaid' ? 'Guthaben aufgebraucht' : 'Vorlauf vor Fälligkeit';
   const more = rem.length > 1 ? ` · danach ${escapeHtml(fmtDate(rem[1].at.slice(0, 10)))}` : '';
   const off = (state.notifications && state.notifications.enabled) ? '' : ' · Erinnerungen aktuell aus';
-  return `<p class="muted small" style="margin:8px 0 0">🔔 Nächste Erinnerung: <b>${escapeHtml(fmtDate(rem[0].at.slice(0, 10)))}</b> (${label})${more}${off}</p>`;
+  const at = rem[0].at;
+  return `<p class="muted small" style="margin:8px 0 0">🔔 Nächste Erinnerung: <b>${escapeHtml(fmtDate(at.slice(0, 10)))}</b> (${label})${more}${off}</p>
+    <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">
+      <a class="btn btn-ghost btn-sm" href="${escapeHtml(gcalHref(p, at))}" target="_blank" rel="noopener">${ICO.calendar} Google Kalender</a>
+      <a class="btn btn-ghost btn-sm" href="${escapeHtml(icsHref(p, at))}" download="finanzguru-termin.ics">.ics-Datei</a>
+    </div>`;
 }
 
 // Guthaben-/Intervall-Übersicht (krumme Summen über mehrere Monate).
