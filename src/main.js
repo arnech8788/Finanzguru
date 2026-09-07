@@ -6,6 +6,7 @@ import { renderPeople } from './people.js';
 import { renderLedger } from './ledger.js';
 import { renderImport } from './import.js';
 import { renderCosts } from './costs.js';
+import { renderCategories } from './categories.js';
 import { exportBackup, importData } from './backup.js';
 import { ensureNotifDefaults, initNotify, requestSync } from './notify.js';
 
@@ -94,6 +95,7 @@ function renderActive(name) {
   else if (name === 'ledger') renderLedger();
   else if (name === 'import') renderImport();
   else if (name === 'costs') renderCosts();
+  else if (name === 'categories') renderCategories();
   else if (name === 'more') renderMore();
 }
 
@@ -141,8 +143,9 @@ function initTheme() {
 }
 
 // ---- "Mehr" / Einstellungen ----------------------------------------------
-const APP_VERSION = '1.24.0';
+const APP_VERSION = '1.25.0';
 const CHANGELOG = [
+  ['1.25.0', 'Kategorie-Übersicht (Mehr → Übersichten): Mobilfunk je Telefonnummer (Anschluss) mit allen zugehörigen SIM-Karten – sortiert nach Anzahl, sodass du auf einen Blick siehst, wo noch Platz für weitere MultiSIM ist (inkl. „X PlusKarte · Y MultiSIM"). Darunter alle Abos (Netflix, Spotify, YouTube …) mit ihren Nutzern und Monatsbeträgen. Tippen öffnet die jeweilige Person. „YouTube" ist jetzt auch als Kategorie-Vorschlag dabei.'],
   ['1.24.0', 'Kalender-Termin für Erinnerungen: Bei zyklisch/über Guthaben zahlenden Personen kannst du in der Personen-Ansicht die nächste Erinnerung jetzt als Kalendertermin anlegen – „Google Kalender" (öffnet vorbefüllt: Titel „<Kategorie>: <Name> – Bezahlung für nächste Monate?", 12:00–12:30, Erinnerung 30 Min. + 5 Tage vorher) oder „.ics-Datei" für andere Kalender-Apps.'],
   ['1.23.0', 'Nächste Erinnerung sichtbar: Bei nicht-monatlichen Zahlern (vierteljährlich, jährlich, alle 2 Monate, Guthaben) zeigt die Personen-Ansicht jetzt „🔔 Nächste Erinnerung: <Datum>" – also wann dich die App vor der nächsten Fälligkeit bzw. beim Aufbrauchen des Guthabens erinnern würde (inkl. Folgetermin). Ist „Erinnerungen" gerade aus, steht ein Hinweis dabei.'],
   ['1.22.0', 'Guthaben-Modell jetzt konsequent nach dem Topf-Prinzip: Es zählt nur noch die Summe aller Einnahmen ab dem Startmonat, verteilt Monat für Monat mit der Rate – egal, in welchem Monat die einzelne Zahlung gebucht ist. Dadurch decken Vorauszahlungen automatisch die Folgemonate in der Soll/Ist-Matrix ab (nicht mehr nur der gebuchte Monat). Kein Ankreuzen pro Monat und kein „gilt für Monat"/„Voraus" mehr nötig – diese Felder sind bei Guthaben-Personen ausgeblendet.'],
@@ -235,6 +238,11 @@ export function renderMore() {
       </div>
 
       ${notifCard()}
+
+      <div class="card">
+        <div class="card-title">Übersichten</div>
+        <button class="row-btn" onclick="showScreen('categories')"><span class="row-ic">${ICO.sim}</span><span>Kategorie-Übersicht (Mobilfunk &amp; Abos)</span><span class="row-arrow">öffnen</span></button>
+      </div>
 
       <div class="card">
         <div class="card-title">Daten</div>

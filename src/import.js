@@ -480,7 +480,7 @@ export function declareIncome(txnId) {
   if (!txn) return;
   const nm = txn.name || txn.purpose || '';
   // Auswahl = bereits vergebene Kategorien + Standardvorschläge (dedupe, Reihenfolge erhalten).
-  const catOpts = [...new Set([...state.people.map((p) => p.category).filter(Boolean), 'Mobilfunk', 'Spotify', 'Netflix', 'Sonstiges'])];
+  const catOpts = [...new Set([...state.people.map((p) => p.category).filter(Boolean), 'Mobilfunk', 'Spotify', 'Netflix', 'YouTube', 'Sonstiges'])];
   const hay = `${txn.name || ''} ${txn.purpose || ''}`.toLowerCase();
   const guess = catOpts.find((c) => hay.includes(c.toLowerCase())) || '';
   openModal('Als regelmäßige Einnahme anlegen', `

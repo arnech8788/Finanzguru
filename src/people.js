@@ -342,7 +342,7 @@ function readDraft() {
 
 function editorHtml() {
   const p = draft;
-  const catOpts = [...new Set([...state.people.map((x) => x.category).filter(Boolean), 'Mobilfunk', 'Spotify', 'Netflix', 'Sonstiges'])];
+  const catOpts = [...new Set([...state.people.map((x) => x.category).filter(Boolean), 'Mobilfunk', 'Spotify', 'Netflix', 'YouTube', 'Sonstiges'])];
   const opts = (list, val, lbl = 'label', id = 'id') => list.map((o) =>
     `<option value="${o[id]}" ${p && val === o[id] ? 'selected' : ''}>${escapeHtml(o[lbl])}</option>`).join('');
   return `
