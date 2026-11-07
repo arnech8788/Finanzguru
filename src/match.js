@@ -135,3 +135,9 @@ export function findRefundCandidates(people, txns) {
   }
   return out;
 }
+
+// Gehört eine (Eingangs-)Transaktion erkennbar zu dieser Person? (IBAN/Name/Gelernt)
+export function matchesPersonTxn(person, txn) {
+  const { reasons } = scoreMatch(person, txn, 0);
+  return reasons.includes('IBAN') || reasons.includes('Name') || reasons.includes('Gelernt');
+}

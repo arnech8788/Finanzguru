@@ -55,6 +55,94 @@ export function addReceived(personId, month, amount, receivedDate, matchedTxnId)
   setReceived(personId, month, { received: sum, receivedDate, matchedTxnId });
 }
 
+// ---- Verknüpfte Überweisungen je Zelle ------------------------------------
+// Eine Zelle kann mehrere Überweisungen enthalten (z. B. 10 € + 12 € statt 22 €).
+// entry.parts = [{ txnId, amount }] · entry.matchedTxnId bleibt (letzte) für Altlogik.
+export function txnIdsOf(entry) {
+  if (!entry) return [];
+  const ids = (entry.parts || []).map((x) => x.txnId).filter(Boolean);
+  if (entry.matchedTxnId && !ids.includes(entry.matchedTxnId)) ids.push(entry.matchedTxnId);
+  return ids;
+}
+function partsOf(entry) {
+  if (Array.isArray(entry.parts)) return entry.parts;
+  // Altbestand: nur matchedTxnId -> als ein Teil mit (max.) Transaktionsbetrag interpretieren.
+  if (entry.matchedTxnId) {
+    const t = state.transactions && state.transactions[entry.matchedTxnId];
+    const rec = Number(entry.received) || 0;
+    return [{ txnId: entry.matchedTxnId, amount: t ? Math.min(Number(t.amount) || 0, rec) : rec }];
+  }
+  return [];
+}
+// Überweisung (anteilig) in eine Zelle buchen. replace = Zelle neu setzen statt addieren.
+export function linkTxn(personId, month, txn, amount, { replace = false } = {}) {
+  const b = bucket(personId);
+  const entry = b[month] || {};
+  const amt = Math.round((Number(amount != null ? amount : txn.amount) || 0) * 100) / 100;
+  const parts = replace ? [] : partsOf(entry).filter((x) => x.txnId !== txn.id);
+  const old = replace ? 0 : (partsOf(entry).find((x) => x.txnId === txn.id) || {}).amount || 0;
+  parts.push({ txnId: txn.id, amount: amt });
+  entry.parts = parts;
+  entry.received = replace ? amt : Math.round(((Number(entry.received) || 0) - old + amt) * 100) / 100;
+  entry.matchedTxnId = txn.id;
+  if (txn.date && (!entry.receivedDate || txn.date > entry.receivedDate)) entry.receivedDate = txn.date;
+  entry.updated = Date.now();
+  b[month] = entry;
+}
+// Eine Überweisung aus einer Zelle lösen (Betrag wieder abziehen).
+export function unlinkTxn(personId, month, txnId) {
+  const b = state.ledger[personId];
+  const entry = b && b[month];
+  if (!entry) return 0;
+  const parts = partsOf(entry);
+  const part = parts.find((x) => x.txnId === txnId);
+  if (!part) return 0;
+  entry.parts = parts.filter((x) => x.txnId !== txnId);
+  entry.received = Math.round(((Number(entry.received) || 0) - (Number(part.amount) || 0)) * 100) / 100;
+  entry.matchedTxnId = entry.parts.length ? entry.parts[entry.parts.length - 1].txnId : '';
+  if (!entry.parts.length) delete entry.parts;
+  entry.updated = Date.now();
+  if (Math.abs(entry.received) < 0.005 && !entry.parts && !entry.refunds && !entry.note && !entry.extraDue && !entry.covered) delete b[month];
+  return part.amount;
+}
+export function partsFor(personId, month) {
+  const e = getReceived(personId, month);
+  return e ? partsOf(e) : [];
+}
+
+// Einmalige Reparatur für Altbestand: Zellen, deren „Erhalten" größer ist als die
+// eine verknüpfte Überweisung, um die passende(n) weitere(n), noch freie(n)
+// Überweisung(en) derselben Person ergänzen (z. B. 10 € + 12 € = 22 €).
+//  matchesPerson(person, txn) -> bool (IBAN/Name), von außen übergeben (match.js).
+export function migrateParts(matchesPerson) {
+  const store = state.transactions || {};
+  const used = new Set();
+  for (const months of Object.values(state.ledger || {})) for (const e of Object.values(months || {})) txnIdsOf(e).forEach((id) => used.add(id));
+  let fixed = 0;
+  for (const person of state.people || []) {
+    const months = state.ledger[person.id] || {};
+    for (const [m, e] of Object.entries(months)) {
+      if (!e || Array.isArray(e.parts) || !e.matchedTxnId) continue;
+      e.parts = partsOf(e);
+      let rest = Math.round(((Number(e.received) || 0) - e.parts.reduce((a, x) => a + x.amount, 0)) * 100) / 100;
+      if (rest < 0.01) continue;
+      const mi = monthIndex(m);
+      const cands = Object.values(store).filter((t) => !used.has(t.id) && !t.ignored && t.date
+        && Math.abs(monthIndex(t.date.slice(0, 7)) - mi) <= 1 && matchesPerson(person, t))
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      // Nur übernehmen, wenn die gefundenen Überweisungen den Rest exakt ergeben.
+      const pick = [];
+      for (const t of cands) {
+        if (rest < 0.01) break;
+        if ((Number(t.amount) || 0) <= rest + 0.005) { pick.push(t); rest = Math.round((rest - Number(t.amount)) * 100) / 100; }
+      }
+      if (Math.abs(rest) >= 0.01) continue;
+      for (const t of pick) { e.parts.push({ txnId: t.id, amount: Number(t.amount) }); used.add(t.id); fixed++; }
+    }
+  }
+  return fixed;
+}
+
 // ---- Rückzahlungen (Geld an eine Person zurücküberwiesen) -----------------
 // Eine Rückzahlung verringert den Netto-Eingang (`received`) der Zelle – damit
 // rechnen Status, Guthaben-Topf, Summen und Erinnerungen automatisch richtig.
@@ -98,7 +186,7 @@ export function unbookRefundTxn(txnId) {
       }
       if (keep.length) e.refunds = keep; else delete e.refunds;
       // Zelle war nur durch die Rückzahlung entstanden -> ganz entfernen.
-      if (!e.refunds && !(Number(e.received)) && !e.receivedDate && !e.note && !e.extraDue && !e.covered && !e.matchedTxnId) delete months[m];
+      if (!e.refunds && !e.parts && !(Number(e.received)) && !e.receivedDate && !e.note && !e.extraDue && !e.covered && !e.matchedTxnId) delete months[m];
     }
   }
   return n;
@@ -125,7 +213,7 @@ export function findDoubledBookings() {
   for (const [pid, months] of Object.entries(state.ledger || {})) {
     for (const [m, e] of Object.entries(months || {})) {
       const id = e && e.matchedTxnId;
-      if (!id || !store[id] || refs[id] !== 1) continue;
+      if (!id || !store[id] || refs[id] !== 1 || (e.parts && e.parts.length > 1)) continue;
       const amt = Number(store[id].amount) || 0;
       const rec = Number(e.received) || 0;
       if (amt > 0 && Math.abs(rec - 2 * amt) < 0.011) hits.push({ pid, m, from: rec, to: amt });

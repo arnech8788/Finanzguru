@@ -9,7 +9,7 @@ import { matchMonth, findRefundCandidates } from './match.js';
 import { parseFile, extractPdfLines, transactionsFromLines } from './parse.js';
 import { detectTelekomInvoice, parseTelekomInvoice } from './parseInvoice.js';
 import { storeInvoice, openInvoiceDetail } from './invoices.js';
-import { getReceived, setReceived, clearReceived, statusFor, STATUS, renderLedger, bookRefund, refundsForTxn, unbookRefundTxn } from './ledger.js';
+import { getReceived, setReceived, clearReceived, statusFor, STATUS, renderLedger, bookRefund, refundsForTxn, unbookRefundTxn, linkTxn, unlinkTxn, txnIdsOf, partsFor } from './ledger.js';
 
 let importMonth = currentMonth();
 let parsed = null; // { txns, fileName }
@@ -55,7 +55,7 @@ function assignedMap() {
   const map = {};
   for (const [pid, months] of Object.entries(state.ledger || {})) {
     for (const [m, e] of Object.entries(months || {})) {
-      if (e && e.matchedTxnId) (map[e.matchedTxnId] = map[e.matchedTxnId] || []).push({ personId: pid, month: m });
+      for (const id of txnIdsOf(e)) (map[id] = map[id] || []).push({ personId: pid, month: m });
     }
   }
   return map;
@@ -272,7 +272,7 @@ function hintHtml() {
 
 function isBooked(personId, txnId) {
   const e = getReceived(personId, importMonth);
-  return !!(e && e.matchedTxnId && e.matchedTxnId === txnId);
+  return txnIdsOf(e).includes(txnId);
 }
 
 function resultsHtml() {
@@ -411,11 +411,10 @@ export function pickImportFile() {
 }
 
 function bookOne(a) {
-  setReceived(a.personId, importMonth, {
-    received: a.txn.amount,
-    receivedDate: a.txn.date,
-    matchedTxnId: a.txn.id
-  });
+  // Vorhandene andere Überweisungen in der Zelle behalten (Teilzahlungen), sonst neu setzen.
+  const e = getReceived(a.personId, importMonth);
+  const hasOther = txnIdsOf(e).some((id) => id !== a.txn.id);
+  linkTxn(a.personId, importMonth, a.txn, a.txn.amount, { replace: !hasOther });
   // Auch beim Bestätigen eines automatischen Treffers dazulernen (z. B. neue IBAN).
   const person = state.people.find((p) => p.id === a.personId);
   if (person) learnFromAssignment(person, a.txn);
@@ -438,7 +437,7 @@ export function rejectAssignment(personId) {
   const [a] = result.assignments.splice(idx, 1);
   // Falls bereits gebucht, Buchung dieser Transaktion rückgängig machen.
   const e = getReceived(personId, importMonth);
-  if (e && e.matchedTxnId === a.txn.id) clearReceived(personId, importMonth);
+  if (txnIdsOf(e).includes(a.txn.id)) unlinkTxn(personId, importMonth, a.txn.id);
   if (!result.unmatched.some((t) => t.id === a.txn.id)) result.unmatched.push(a.txn);
   save();
   afterChange();
@@ -495,7 +494,7 @@ export function assignUnmatchedTo(txnId, personId) {
   const txn = parsed.txns.find((t) => t.id === txnId);
   const person = state.people.find((p) => p.id === personId);
   if (!txn || !person) return;
-  setReceived(personId, importMonth, { received: txn.amount, receivedDate: txn.date, matchedTxnId: txn.id });
+  linkTxn(personId, importMonth, txn, txn.amount);
   learnFromAssignment(person, txn);
   save();
   closeModal();
@@ -554,7 +553,7 @@ export function saveIncome(txnId) {
   // Anonyme Sammel-IBAN (PayPal/Netflix) als Hinweis lernen statt als feste IBAN.
   if (iban && isSharedIban(iban)) person.payAliases = [{ iban: txn.iban, amount: txn.amount }];
   state.people.push(person);
-  setReceived(person.id, importMonth, { received: txn.amount, receivedDate: txn.date, matchedTxnId: txn.id });
+  linkTxn(person.id, importMonth, txn, txn.amount, { replace: true });
   save();
   closeModal();
   recompute();
@@ -627,8 +626,7 @@ export function saveSplit() {
   let n = 0;
   for (const r of splitState.rows) {
     if (r.personId && r.amount > 0) {
-      const prev = getReceived(r.personId, month) || {};
-      setReceived(r.personId, month, { received: (Number(prev.received) || 0) + r.amount, receivedDate: txn.date, matchedTxnId: txn.id });
+      linkTxn(r.personId, month, txn, r.amount);
       n++;
     }
   }
@@ -661,17 +659,17 @@ export function assignStored(id) {
       ${people.map((p) => `<button class="pick-row" onclick="assignStoredTo('${txn.id}','${p.id}')">${escapeHtml(p.name || '(ohne Name)')}${p.category ? ` · ${escapeHtml(p.category)}` : ''}<span class="muted small">${fmtEUR(expectedForMonth(p, m))}</span></button>`).join('') || '<p class="muted small">Keine Personen vorhanden.</p>'}
     </div>`);
 }
-export function assignStoredTo(id, personId) {
+export function assignStoredTo(id, personId, stayInPerson) {
   const txn = findAnyTxn(id);
   const person = state.people.find((p) => p.id === personId);
   if (!txn || !person) return;
   const m = monthKey(txn.date);
-  const prev = getReceived(personId, m) || {};
-  if (prev.matchedTxnId === txn.id) { toast('Dieser Eingang ist hier bereits gebucht', ''); closeModal(); return; }
-  setReceived(personId, m, { received: (Number(prev.received) || 0) + txn.amount, receivedDate: txn.date, matchedTxnId: txn.id });
+  if (txnIdsOf(getReceived(personId, m)).includes(txn.id)) { toast('Dieser Eingang ist hier bereits gebucht', ''); closeModal(); return; }
+  linkTxn(personId, m, txn, txn.amount);
   learnFromAssignment(person, txn);
   save();
-  closeModal();
+  // Aus der Personen-Ansicht: dort bleiben (Modal ersetzen statt schließen).
+  if (stayInPerson && window.openPersonPayments) window.openPersonPayments(personId); else closeModal();
   if (result) result.unmatched = result.unmatched.filter((t) => t.id !== id);
   afterChange();
   toast(`Zugeordnet · ${monthLabel(m)}`, 'ok');
@@ -858,8 +856,15 @@ function txnDetailHtml(t) {
   if (tgt) {
     status = `<span style="color:#2fb86b">Zugeordnet</span>`;
     actions = `<p class="muted small" style="margin:0 0 8px">Gebucht bei:</p>
-      ${tgt.map((x) => `<button class="pick-row" onclick="openLedgerCell('${x.personId}','${x.month}')">${escapeHtml(personName(x.personId))}<span class="muted small">${escapeHtml(monthLabel(x.month))} ›</span></button>`).join('')}
-      <p class="muted small" style="margin:8px 0 0">Ändern oder lösen über die jeweilige Zelle im Soll/Ist.</p>`;
+      ${tgt.map((x) => {
+        const part = partsFor(x.personId, x.month).find((y) => y.txnId === t.id);
+        return `<div class="imp-row" style="margin-bottom:6px">
+          <div class="dash-meta" onclick="openLedgerCell('${x.personId}','${x.month}')" style="cursor:pointer"><b>${escapeHtml(personName(x.personId))}</b>
+            <small>${escapeHtml(monthLabel(x.month))}${part ? ' · ' + fmtEUR(part.amount) : ''} · Zelle öffnen ›</small></div>
+          <div class="imp-right"><button class="btn btn-sm btn-ghost" onclick="unlinkStored('${t.id}','${x.personId}','${x.month}')">Lösen</button></div>
+        </div>`;
+      }).join('')}
+      <p class="muted small" style="margin:8px 0 0">„Lösen“ zieht den Betrag wieder ab – der Eingang ist danach wieder offen und kann neu zugeordnet werden.</p>`;
   } else if (t.ignored) {
     status = `<span style="color:var(--tx3)">Muss nicht zugeordnet werden</span>`;
     actions = `<div class="modal-actions">
@@ -894,6 +899,16 @@ export function openTxnDetail(id) {
   if (!t) return;
   openModal('Eingang', txnDetailHtml(t));
 }
+export function unlinkStored(id, personId, month) {
+  const amt = unlinkTxn(personId, month, id);
+  save();
+  afterChange();
+  const t = findAnyTxn(id);
+  if (window.__personPayView === personId && window.openPersonPayments) window.openPersonPayments(personId);
+  else if (t && document.getElementById('modalOverlay')) updateModalBody(txnDetailHtml(t));
+  toast(amt ? `Gelöst (−${fmtEUR(amt)})` : 'Nichts zu lösen');
+}
+
 export function ignoreTxn(id) {
   const t = state.transactions && state.transactions[id];
   if (!t) return;
@@ -927,6 +942,6 @@ Object.assign(window, {
   openManualPayment, saveManualPayment, declareIncome, saveIncome,
   splitUnmatched, addSplitRow, removeSplitRow, saveSplit,
   setTxnQuery, setTxnFilter, assignStored, assignStoredTo, splitStored,
-  openTxnDetail, ignoreTxn, unignoreTxn,
+  openTxnDetail, ignoreTxn, unignoreTxn, unlinkStored,
   openRefund, addRefundRow, removeRefundRow, saveRefund, ignoreOutgoing, undoRefund, openRefundQuestions
 });
