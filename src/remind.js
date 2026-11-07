@@ -1,6 +1,6 @@
 // Reine Reminder-Berechnung (kein DOM, keine Seiteneffekte) – testbar.
 import { monthKey, monthIndex, shiftMonth } from './money.js';
-import { schedulePeriod, governingDueMonth, expectedForMonth, monthlyAmount } from './data/schedules.js';
+import { schedulePeriod, governingDueMonth, expectedForMonth, monthlyAmount, activePeople } from './data/schedules.js';
 
 const RHYTHM_WORD = { quarterly: 'vierteljährliche', yearly: 'jährliche', bimonthly: 'zweimonatliche' };
 
@@ -36,7 +36,7 @@ function atDate(ym, day, hh, mm) {
 }
 // Monatlich offen? (ohne ledger.js – liest direkt aus s.ledger)
 function hasOpenMonthly(s, ym) {
-  return (s.people || []).some((p) => {
+  return activePeople(s.people).some((p) => {
     if (p.schedule === 'prepaid') return false; // Guthaben-Personen separat behandeln
     if (schedulePeriod(p.schedule) !== 1) return false;
     const exp = expectedForMonth(p, ym);
@@ -72,12 +72,13 @@ export function computeReminders(s, now = new Date(), horizonDays = 120) {
     m = shiftMonth(m, 1);
   }
 
-  for (const p of s.people || []) {
+  for (const p of activePeople(s.people)) {
     const per = schedulePeriod(p.schedule);
     if (per <= 1 || !(Number(p.expectedAmount) > 0)) continue;
     const lead = (n.leadDays && n.leadDays[p.schedule] != null) ? n.leadDays[p.schedule] : 7;
     let dm = governingDueMonth(p, nowMonth);
     for (let k = 0; k < 30; k++) {
+      if (p.endMonth && dm > p.endMonth) break;
       const dueDate = atDate(dm, p.dayOfMonth || 1, hh, mm);
       const remAt = new Date(dueDate.getTime() - lead * 864e5);
       if (remAt.getTime() > endMs) break;
@@ -90,7 +91,7 @@ export function computeReminders(s, now = new Date(), horizonDays = 120) {
 
   // Guthaben-Personen (Prepaid): erinnern, wenn das Guthaben (bald) aufgebraucht ist.
   // Generischer Text ohne Namen – wird ggf. an den Push-Server synchronisiert.
-  for (const p of s.people || []) {
+  for (const p of activePeople(s.people)) {
     if (p.schedule !== 'prepaid') continue;
     const r = monthlyAmount(p, nowMonth);
     if (!(r > 0)) continue;
@@ -141,6 +142,7 @@ export function personReminders(s, person, now = new Date(), horizonDays = 300) 
     const lead = (n.leadDays && n.leadDays[person.schedule] != null) ? n.leadDays[person.schedule] : 7;
     let dm = governingDueMonth(person, nowMonth);
     for (let k = 0; k < 30; k++) {
+      if (p.endMonth && dm > p.endMonth) break;
       const dueDate = atDate(dm, person.dayOfMonth || 1, hh, mm);
       const remAt = new Date(dueDate.getTime() - lead * 864e5);
       if (remAt.getTime() > endMs) break;

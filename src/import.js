@@ -74,8 +74,18 @@ export function setImportMonth(delta) {
   renderImport();
 }
 
+// Personen, die im Monat relevant sind: aktive + archivierte bis zu ihrem letzten Beitragsmonat.
+function relevantPeople(month) {
+  return state.people.filter((p) => !p.archived || (p.endMonth && month <= p.endMonth));
+}
+// Auswahllisten: aktive alphabetisch, archivierte danach (markiert).
+function pickPeople() {
+  return [...state.people].sort((a, b) => (!!a.archived - !!b.archived) || (a.name || '').localeCompare(b.name || '', 'de'));
+}
+function archTag(p) { return p.archived ? ' <span class="muted small">(archiviert)</span>' : ''; }
+
 function recompute() {
-  result = matchMonth(state.people, parsed.txns, importMonth, state.settings);
+  result = matchMonth(relevantPeople(importMonth), parsed.txns, importMonth, state.settings);
 }
 
 export function renderImport() {
@@ -225,7 +235,7 @@ function storedIncomeHtml() {
 
 // ---- Manuelle Zahlung (z. B. PayPal) buchen & zuordnen --------------------
 export function openManualPayment() {
-  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  const people = pickPeople();
   if (!people.length) { toast('Erst Personen anlegen', 'err'); return; }
   openModal('Zahlung manuell buchen', `
     <form id="manualPayForm" onsubmit="return false">
@@ -341,7 +351,7 @@ function resultsHtml() {
   const byPerson = new Map(assignments.map((a) => [a.personId, a]));
 
   // Personen mit Soll in diesem Monat + alle mit Zuordnung.
-  const rowsPeople = [...state.people]
+  const rowsPeople = relevantPeople(importMonth)
     .map((p) => ({ p, exp: expectedForMonth(p, importMonth), a: byPerson.get(p.id) }))
     .filter((r) => r.exp > 0 || r.a)
     .sort((a, b) => (statusRank(a) - statusRank(b)) || (a.p.name || '').localeCompare(b.p.name || '', 'de'));
@@ -517,12 +527,12 @@ export function bookAll() {
 export function assignUnmatched(txnId) {
   const txn = result.unmatched.find((t) => t.id === txnId) || parsed.txns.find((t) => t.id === txnId);
   if (!txn) return;
-  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  const people = pickPeople();
   openModal(`${fmtEUR(txn.amount)} zuordnen`, `
     <p class="muted small" style="margin:0 0 12px">${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''}</p>
     <div class="pick-list">
       ${people.map((p) => `<button class="pick-row" onclick="assignUnmatchedTo('${txn.id}','${p.id}')">
-        ${escapeHtml(p.name || '(ohne Name)')}${p.category ? ` · ${escapeHtml(p.category)}` : ''}<span class="muted small">${fmtEUR(expectedForMonth(p, importMonth))}</span></button>`).join('')
+        ${escapeHtml(p.name || '(ohne Name)')}${p.category ? ` · ${escapeHtml(p.category)}` : ''}${archTag(p)}<span class="muted small">${fmtEUR(expectedForMonth(p, importMonth))}</span></button>`).join('')
         || '<p class="muted small">Keine Personen vorhanden.</p>'}
     </div>`);
 }
@@ -628,9 +638,9 @@ function splitTxn() {
   return splitState && findAnyTxn(splitState.txnId);
 }
 function splitPeopleOptions(sel) {
-  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  const people = pickPeople();
   return `<option value="">— Person / Kategorie —</option>` + people.map((p) =>
-    `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${escapeHtml((p.name || '(ohne Name)') + (p.category ? ' · ' + p.category : ''))}</option>`).join('');
+    `<option value="${p.id}" ${sel === p.id ? 'selected' : ''}>${escapeHtml((p.name || '(ohne Name)') + (p.category ? ' · ' + p.category : '') + (p.archived ? ' (archiviert)' : ''))}</option>`).join('');
 }
 function splitModalHtml(txn) {
   const m = splitState.month || importMonth;
@@ -712,11 +722,11 @@ export function assignStored(id) {
   const txn = findAnyTxn(id);
   if (!txn) return;
   const m = monthKey(txn.date);
-  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  const people = pickPeople();
   openModal(`${fmtEUR(txn.amount)} zuordnen`, `
     <p class="muted small" style="margin:0 0 12px">${escapeHtml(fmtDate(txn.date))} · ${escapeHtml(txn.name || '—')}${txn.purpose ? ' · ' + escapeHtml(txn.purpose) : ''} · Monat ${escapeHtml(monthLabel(m))}</p>
     <div class="pick-list">
-      ${people.map((p) => `<button class="pick-row" onclick="assignStoredTo('${txn.id}','${p.id}')">${escapeHtml(p.name || '(ohne Name)')}${p.category ? ` · ${escapeHtml(p.category)}` : ''}<span class="muted small">${fmtEUR(expectedForMonth(p, m))}</span></button>`).join('') || '<p class="muted small">Keine Personen vorhanden.</p>'}
+      ${people.map((p) => `<button class="pick-row" onclick="assignStoredTo('${txn.id}','${p.id}')">${escapeHtml(p.name || '(ohne Name)')}${p.category ? ` · ${escapeHtml(p.category)}` : ''}${archTag(p)}<span class="muted small">${fmtEUR(expectedForMonth(p, m))}</span></button>`).join('') || '<p class="muted small">Keine Personen vorhanden.</p>'}
     </div>`);
 }
 export function assignStoredTo(id, personId, stayInPerson) {

@@ -31,11 +31,13 @@ export function renderDashboard() {
   if (!el) return;
   const month = dashMonth;
   // Kategorien aus allen Personen (für die Filter-Chips); 'Ohne Kategorie' ans Ende.
-  const cats = [...new Set(state.people.map(catOf))]
+  // Archivierte nur bis einschließlich ihres letzten Beitragsmonats zeigen.
+  const act = state.people.filter((p) => !p.archived || (p.endMonth && month <= p.endMonth));
+  const cats = [...new Set(act.map(catOf))]
     .sort((a, b) => (a === 'Ohne Kategorie' ? 1 : b === 'Ohne Kategorie' ? -1 : a.localeCompare(b, 'de')));
   lastCats = cats;
   if (dashCategory && !cats.includes(dashCategory)) dashCategory = '';
-  const people = dashCategory ? state.people.filter((p) => catOf(p) === dashCategory) : [...state.people];
+  const people = dashCategory ? act.filter((p) => catOf(p) === dashCategory) : [...act];
 
   let sollSum = 0, istSum = 0, offenSum = 0, offenCount = 0, paidCount = 0;
   const rows = [];

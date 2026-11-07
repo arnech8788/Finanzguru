@@ -4,7 +4,7 @@ import { ICO, escapeHtml } from './ui.js';
 import { state } from './main.js';
 import { fmtEUR, currentMonth } from './money.js';
 import { cardTypeLabel, simKindLabel } from './data/cardTypes.js';
-import { monthlyAmount } from './data/schedules.js';
+import { monthlyAmount, activePeople } from './data/schedules.js';
 
 const normPhone = (s) => String(s || '').replace(/\D/g, '');
 const shortSim = (s) => { const d = String(s || '').replace(/\s/g, ''); return d ? '…' + d.slice(-6) : ''; };
@@ -12,7 +12,7 @@ const shortSim = (s) => { const d = String(s || '').replace(/\s/g, ''); return d
 // Alle Karten aller Personen nach Telefonnummer (= Anschluss) gruppieren.
 function mobileGroups() {
   const groups = new Map();
-  for (const p of state.people) {
+  for (const p of activePeople(state.people)) {
     for (const c of (p.cards || [])) {
       const key = normPhone(c.phone) || 'none';
       if (!groups.has(key)) groups.set(key, { key, phone: c.phone || '', cards: [] });
@@ -70,7 +70,7 @@ function subsSection() {
   const month = currentMonth();
   // Personen ohne Mobilfunk-Kategorie nach Kategorie gruppieren.
   const byCat = new Map();
-  for (const p of state.people) {
+  for (const p of activePeople(state.people)) {
     if (p.category === 'Mobilfunk') continue;
     if ((p.cards || []).some((c) => c.type === 'pluskarte' || c.type === 'multisim') && !p.category) continue; // reine Karten-Personen
     const cat = p.category || 'Ohne Kategorie';
