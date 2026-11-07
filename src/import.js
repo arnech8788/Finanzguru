@@ -105,6 +105,65 @@ export function renderImport() {
       ${parsed ? resultsHtml() : hintHtml()}
       ${storedIncomeHtml()}
     </div>`;
+  bindSwipes(el);
+}
+
+// ---- Wischen nach rechts = „Muss nicht zugeordnet werden" -----------------
+function bindSwipes(root) {
+  root.querySelectorAll('.swipeable[data-swipe-id]').forEach((row) => {
+    let x0 = 0, y0 = 0, dx = 0, active = false, horiz = null, pid = null;
+    const reset = () => {
+      row.style.transition = 'transform .2s ease';
+      row.style.transform = '';
+      row.parentElement.classList.remove('swipe-armed');
+    };
+    row.addEventListener('pointerdown', (e) => {
+      if (e.button != null && e.button !== 0) return;
+      if (e.target.closest('button')) return; // „Zuordnen" normal antippen
+      x0 = e.clientX; y0 = e.clientY; dx = 0; active = true; horiz = null; pid = e.pointerId;
+      row.style.transition = 'none';
+    });
+    row.addEventListener('pointermove', (e) => {
+      if (!active || e.pointerId !== pid) return;
+      const mx = e.clientX - x0, my = e.clientY - y0;
+      if (horiz === null && (Math.abs(mx) > 8 || Math.abs(my) > 8)) {
+        horiz = Math.abs(mx) > Math.abs(my) && mx > 0;
+        if (horiz) { try { row.setPointerCapture(pid); } catch (err) { /* egal */ } }
+      }
+      if (!horiz) return;
+      dx = Math.max(0, mx);
+      row.style.transform = `translateX(${dx}px)`;
+      row.parentElement.classList.toggle('swipe-armed', dx > row.offsetWidth * 0.35);
+    });
+    const end = () => {
+      if (!active) return;
+      active = false;
+      if (!horiz) return;
+      // Klick nach dem Wischen unterdrücken.
+      row.addEventListener('click', (ev) => { ev.stopPropagation(); ev.preventDefault(); }, { capture: true, once: true });
+      if (dx > row.offsetWidth * 0.35) {
+        row.style.transition = 'transform .18s ease';
+        row.style.transform = 'translateX(110%)';
+        const id = row.dataset.swipeId;
+        setTimeout(() => swipeIgnore(id), 170);
+      } else reset();
+    };
+    row.addEventListener('pointerup', end);
+    row.addEventListener('pointercancel', () => { if (active) { active = false; reset(); } });
+  });
+}
+
+function swipeIgnore(id) {
+  const t = state.transactions && state.transactions[id];
+  if (!t) return;
+  t.ignored = true;
+  t.ignoreNote = '';
+  save();
+  afterChange();
+  toast(`${fmtEUR(t.amount)} · nicht nötig`, 'ok', {
+    label: 'Rückgängig',
+    onClick: () => { delete t.ignored; delete t.ignoreNote; save(); afterChange(); }
+  });
 }
 
 // Dauerhafte, durchsuchbare Liste aller importierten Eingänge (zuordnen/aufteilen).
@@ -138,15 +197,16 @@ function storedIncomeHtml() {
       : isIgnored
         ? `<span class="muted small">nicht nötig${t.ignoreNote ? ' · ' + escapeHtml(t.ignoreNote) : ''}</span>`
         : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();assignStored('${t.id}')">Zuordnen</button>`;
-    return `<div class="imp-row imp-click" role="button" tabindex="0" onclick="openTxnDetail('${t.id}')">
+    const swipe = !tgt && !isIgnored;
+    return `${swipe ? `<div class="swipe-wrap"><div class="swipe-bg">✓ Nicht nötig</div>` : ''}<div class="imp-row imp-click${swipe ? ' swipeable' : ''}" ${swipe ? `data-swipe-id="${t.id}"` : ''} role="button" tabindex="0" onclick="openTxnDetail('${t.id}')">
       <span class="dash-dot" style="--sc:${tgt ? '#2fb86b' : isIgnored ? '#8a919e' : '#5b6270'}"></span>
       <div class="dash-meta"><b>${fmtEUR(t.amount)}</b>
         <small>${escapeHtml(fmtDate(t.date))} · ${escapeHtml(t.name || '—')}${t.purpose ? ' · ' + escapeHtml(t.purpose) : ''}</small></div>
       <div class="imp-right">${right}</div>
-    </div>`;
+    </div>${swipe ? '</div>' : ''}`;
   }).join('');
   return `
-    <div class="section-label">Alle Eingänge (${total}${unassigned ? ` · ${unassigned} offen` : ''}) · Tippen für Details</div>
+    <div class="section-label">Alle Eingänge (${total}${unassigned ? ` · ${unassigned} offen` : ''}) · Tippen für Details · nach rechts wischen = nicht nötig</div>
     <div class="card">
       <div class="search-wrap">${ICO.search}
         <input id="txnSearch" type="search" placeholder="Name, Zweck, Betrag, Datum…" value="${escapeHtml(txnQuery)}" oninput="setTxnQuery(this.value)" autocomplete="off"></div>

@@ -170,6 +170,9 @@ svg { width: 22px; height: 22px; flex: none; }
 .toast.show { opacity: 1; translate: -50% 0; }
 .toast-ok { border-color: var(--ok); }
 .toast-err { border-color: var(--warn); }
+.toast.toast-has-action { display: flex; align-items: center; gap: 14px; white-space: nowrap; }
+.toast.show.toast-has-action { pointer-events: auto; }
+.toast-action { background: none; border: none; color: var(--ok); font: inherit; font-weight: 800; cursor: pointer; padding: 0; }
 .update-toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--nav-h) + 16px + env(safe-area-inset-bottom)); max-width: calc(var(--maxw) - 32px); margin: 0 auto; background: var(--bg3); border: 1px solid var(--accent); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; z-index: 200; box-shadow: var(--shadow); }
 
 /* Status badge */
@@ -312,3 +315,9 @@ svg { width: 22px; height: 22px; flex: none; }
 
 mark { background: color-mix(in srgb, var(--accent) 40%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
 a { color: var(--accent); }
+
+/* Wischen nach rechts = „nicht nötig" (Import → Alle Eingänge) */
+.swipe-wrap { position: relative; border-radius: var(--r-sm); overflow: hidden; }
+.swipe-bg { position: absolute; inset: 0; display: flex; align-items: center; padding-left: 18px; font-weight: 700; font-size: 14px; color: var(--tx2); background: var(--bg3); border-radius: var(--r-sm); transition: background .15s, color .15s; }
+.swipe-wrap.swipe-armed .swipe-bg { background: var(--ok); color: #fff; }
+.imp-row.swipeable { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
