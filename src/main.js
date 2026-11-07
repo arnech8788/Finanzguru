@@ -57,6 +57,7 @@ export function load() {
   if (!Array.isArray(state.invoices)) state.invoices = [];
   if (!state.invoiceMap || typeof state.invoiceMap !== 'object') state.invoiceMap = {};
   if (!state.transactions || typeof state.transactions !== 'object') state.transactions = {};
+  if (!state.outgoing || typeof state.outgoing !== 'object') state.outgoing = {};
   ensureNotifDefaults(state);
   state.schema = 1;
 }
@@ -70,6 +71,7 @@ export function applyImportedState(partial) {
   if (Array.isArray(partial.invoices)) state.invoices = partial.invoices;
   if (partial.invoiceMap && typeof partial.invoiceMap === 'object') state.invoiceMap = { ...state.invoiceMap, ...partial.invoiceMap };
   if (partial.transactions && typeof partial.transactions === 'object') state.transactions = partial.transactions;
+  if (partial.outgoing && typeof partial.outgoing === 'object') state.outgoing = partial.outgoing;
   if (partial.notifications && typeof partial.notifications === 'object') { state.notifications = partial.notifications; ensureNotifDefaults(state); }
   save();
   renderActive(currentScreen);

@@ -115,3 +115,23 @@ export function matchMonth(people, txns, month, settings = {}) {
   const unmatched = incoming.filter((t) => !usedTxn.has(t.id));
   return { assignments, unmatched };
 }
+
+// Ausgehende Überweisungen (amount < 0), die an eine bekannte Person gingen –
+// mögliche Rückzahlungen. Treffer per IBAN (nicht Sammel-IBAN) oder Name/Alias.
+// Rückgabe: [{ txn, personIds: [...] }] (alle Einträge derselben Person, z. B.
+// „Max" + „Max (YouTube)", damit die Rückzahlung aufgeteilt werden kann).
+export function findRefundCandidates(people, txns) {
+  const out = [];
+  for (const txn of txns || []) {
+    if (!(txn.amount < 0)) continue;
+    const probe = { ...txn, amount: Math.abs(txn.amount) };
+    const ids = (people || [])
+      .filter((p) => {
+        const { reasons } = scoreMatch(p, probe, 0);
+        return reasons.includes('IBAN') || reasons.includes('Name');
+      })
+      .map((p) => p.id);
+    if (ids.length) out.push({ txn, personIds: ids });
+  }
+  return out;
+}

@@ -197,6 +197,9 @@ export function parseDkbCsv(text) {
     purpose: colIndex(headers, ['verwendungszweck', 'beschreibung']),
     amount: colIndex(headers, ['betrag'])
   };
+  // Neues DKB-Format hat getrennte Spalten Zahlungspflichtige*r / Zahlungsempfänger*in:
+  // bei Ausgängen (Betrag < 0) ist der Empfänger die Gegenpartei.
+  const recvIdx = colIndex(headers, ['zahlungsempf']);
   const txns = [];
   for (let i = hIdx + 1; i < lines.length; i++) {
     if (!lines[i].trim()) continue;
@@ -208,7 +211,7 @@ export function parseDkbCsv(text) {
     if (!date && ci.date >= 0 && /^\d{4}-\d{2}-\d{2}/.test(cols[ci.date])) date = cols[ci.date].slice(0, 10);
     txns.push({
       date,
-      name: ci.name >= 0 ? cols[ci.name] : '',
+      name: (amount < 0 && recvIdx >= 0 && recvIdx !== ci.name) ? cols[recvIdx] : (ci.name >= 0 ? cols[ci.name] : ''),
       iban: ci.iban >= 0 ? cols[ci.iban].replace(/\s+/g, '') : '',
       purpose: ci.purpose >= 0 ? cols[ci.purpose] : '',
       amount,
