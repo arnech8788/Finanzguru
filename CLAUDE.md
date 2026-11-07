@@ -24,6 +24,12 @@ Service Worker via `vite-plugin-pwa` (Workbox, `generateSW`); kein manuelles `sw
 Update-Toast via `registerSW({ onNeedRefresh })` in `src/main.js`. PDF-Parsing nutzt
 `pdfjs-dist`, das **nur bei Bedarf** (lazy `import()`) geladen wird.
 
+## Branch-Workflow (wichtig)
+
+- **Immer auf `dev` entwickeln**, committen und pushen (`git push -u origin dev`).
+- **Nie ungefragt nach `main` mergen/pushen** (`main` = Live-Deployment). Nach Abschluss
+  einer Änderung den Nutzer fragen, ob `dev` in `main` gemergt werden soll.
+
 ## Deployment
 
 Push auf `main` → GitHub Action (`.github/workflows/firebase-hosting-merge.yml`) baut mit
