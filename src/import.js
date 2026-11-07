@@ -5,11 +5,11 @@ import { state, save, rerenderDashboard, showScreen } from './main.js';
 import { fmtEUR, parseEUR, fmtDate, monthLabel, monthKey, currentMonth, shiftMonth, todayISO } from './money.js';
 import { expectedForMonth, SCHEDULES } from './data/schedules.js';
 import { isSharedIban, normalizeIban, normalizeName, looksAnonymous } from './match.js';
-import { matchMonth } from './match.js';
+import { matchMonth, findRefundCandidates } from './match.js';
 import { parseFile, extractPdfLines, transactionsFromLines } from './parse.js';
 import { detectTelekomInvoice, parseTelekomInvoice } from './parseInvoice.js';
 import { storeInvoice, openInvoiceDetail } from './invoices.js';
-import { getReceived, setReceived, clearReceived, statusFor, STATUS, renderLedger } from './ledger.js';
+import { getReceived, setReceived, clearReceived, statusFor, STATUS, renderLedger, bookRefund, refundsForTxn, unbookRefundTxn } from './ledger.js';
 
 let importMonth = currentMonth();
 let parsed = null; // { txns, fileName }
@@ -23,8 +23,31 @@ function persistTxns(txns) {
   if (!state.transactions || typeof state.transactions !== 'object') state.transactions = {};
   for (const t of txns) {
     if (!(t.amount > 0)) continue;
+    const prev = state.transactions[t.id];
     state.transactions[t.id] = { id: t.id, date: t.date, name: t.name || '', iban: t.iban || '', purpose: t.purpose || '', amount: t.amount };
+    // „Muss nicht zugeordnet werden" bei erneutem Import beibehalten.
+    if (prev && prev.ignored) { state.transactions[t.id].ignored = true; state.transactions[t.id].ignoreNote = prev.ignoreNote || ''; }
   }
+}
+
+// Ausgehende Überweisungen an bekannte Personen (mögliche Rückzahlungen) merken.
+// state.outgoing[id] = { id, date, name, iban, purpose, amount (<0), personIds, decision }
+//  decision: '' = noch nicht beantwortet · 'refund' = als Rückzahlung gebucht · 'ignore' = keine
+function persistOutgoing(txns) {
+  if (!state.outgoing || typeof state.outgoing !== 'object') state.outgoing = {};
+  let added = 0;
+  for (const { txn, personIds } of findRefundCandidates(state.people, txns)) {
+    const prev = state.outgoing[txn.id];
+    if (prev) { prev.personIds = personIds; continue; }
+    state.outgoing[txn.id] = { id: txn.id, date: txn.date, name: txn.name || '', iban: txn.iban || '', purpose: txn.purpose || '', amount: txn.amount, personIds, decision: '' };
+    added++;
+  }
+  return added;
+}
+function pendingOutgoing() {
+  return Object.values(state.outgoing || {})
+    .filter((o) => !o.decision && !refundsForTxn(o.id).length)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
 // Map: txnId -> [{ personId, month }] aus dem Ledger (matchedTxnId = aus Import gebucht).
@@ -74,9 +97,11 @@ export function renderImport() {
       </button>
 
       <button class="btn btn-ghost full" style="margin-top:10px" onclick="openManualPayment()">${ICO.plus} PayPal-/manuelle Zahlung buchen</button>
+      <button class="btn btn-ghost full" style="margin-top:8px" onclick="openRefund('')">↩ Rückzahlung an Person buchen</button>
 
       ${lastDkbBookingLine()}
       ${latestInvoiceLine()}
+      ${outgoingHtml()}
       ${parsed ? resultsHtml() : hintHtml()}
       ${storedIncomeHtml()}
     </div>`;
@@ -90,8 +115,10 @@ function storedIncomeHtml() {
   const q = txnQuery.trim().toLowerCase();
   const list = all.filter((t) => {
     const isAssigned = !!amap[t.id];
-    if (txnFilter === 'unassigned' && isAssigned) return false;
+    const isIgnored = !isAssigned && !!t.ignored;
+    if (txnFilter === 'unassigned' && (isAssigned || isIgnored)) return false;
     if (txnFilter === 'assigned' && !isAssigned) return false;
+    if (txnFilter === 'ignored' && !isIgnored) return false;
     if (q) {
       const hay = `${t.name} ${t.purpose} ${fmtEUR(t.amount)} ${fmtDate(t.date)} ${t.date}`.toLowerCase();
       if (!hay.includes(q)) return false;
@@ -99,33 +126,35 @@ function storedIncomeHtml() {
     return true;
   }).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const total = all.length;
-  const unassigned = all.filter((t) => !amap[t.id]).length;
+  const ignored = all.filter((t) => !amap[t.id] && t.ignored).length;
+  const unassigned = all.filter((t) => !amap[t.id] && !t.ignored).length;
   const shown = list.slice(0, 200);
   const chip = (f, label, n) => `<button class="catchip ${txnFilter === f ? 'catchip-active' : ''}" onclick="setTxnFilter('${f}')">${label} <span class="cc-count">${n}</span></button>`;
   const rows = shown.map((t) => {
     const tgt = amap[t.id];
+    const isIgnored = !tgt && t.ignored;
     const right = tgt
       ? `<span class="muted small">→ ${tgt.map((x) => escapeHtml(personName(x.personId)) + ' (' + escapeHtml(monthLabel(x.month)) + ')').join(', ')}</span>`
-      : `<div class="imp-btns">
-          <button class="btn btn-sm btn-primary" onclick="assignStored('${t.id}')">Zuordnen</button>
-          <button class="btn btn-sm btn-ghost" onclick="splitStored('${t.id}')">Aufteilen</button>
-        </div>`;
-    return `<div class="imp-row">
-      <span class="dash-dot" style="--sc:${tgt ? '#2fb86b' : '#5b6270'}"></span>
+      : isIgnored
+        ? `<span class="muted small">nicht nötig${t.ignoreNote ? ' · ' + escapeHtml(t.ignoreNote) : ''}</span>`
+        : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();assignStored('${t.id}')">Zuordnen</button>`;
+    return `<div class="imp-row imp-click" role="button" tabindex="0" onclick="openTxnDetail('${t.id}')">
+      <span class="dash-dot" style="--sc:${tgt ? '#2fb86b' : isIgnored ? '#8a919e' : '#5b6270'}"></span>
       <div class="dash-meta"><b>${fmtEUR(t.amount)}</b>
         <small>${escapeHtml(fmtDate(t.date))} · ${escapeHtml(t.name || '—')}${t.purpose ? ' · ' + escapeHtml(t.purpose) : ''}</small></div>
       <div class="imp-right">${right}</div>
     </div>`;
   }).join('');
   return `
-    <div class="section-label">Alle Eingänge (${total}${unassigned ? ` · ${unassigned} offen` : ''})</div>
+    <div class="section-label">Alle Eingänge (${total}${unassigned ? ` · ${unassigned} offen` : ''}) · Tippen für Details</div>
     <div class="card">
       <div class="search-wrap">${ICO.search}
         <input id="txnSearch" type="search" placeholder="Name, Zweck, Betrag, Datum…" value="${escapeHtml(txnQuery)}" oninput="setTxnQuery(this.value)" autocomplete="off"></div>
       <div class="cat-chips" style="margin-top:10px">
         ${chip('all', 'Alle', total)}
         ${chip('unassigned', 'Nicht zugeordnet', unassigned)}
-        ${chip('assigned', 'Zugeordnet', total - unassigned)}
+        ${chip('assigned', 'Zugeordnet', total - unassigned - ignored)}
+        ${chip('ignored', 'Nicht nötig', ignored)}
       </div>
     </div>
     <div class="imp-list">
@@ -247,7 +276,8 @@ function isBooked(personId, txnId) {
 }
 
 function resultsHtml() {
-  const { assignments, unmatched } = result;
+  const { assignments } = result;
+  const unmatched = result.unmatched.filter((t) => !(state.transactions && state.transactions[t.id] && state.transactions[t.id].ignored));
   const byPerson = new Map(assignments.map((a) => [a.personId, a]));
 
   // Personen mit Soll in diesem Monat + alle mit Zuordnung.
@@ -362,9 +392,12 @@ export function pickImportFile() {
       }
       parsed = { txns, fileName: file.name };
       persistTxns(txns);
+      persistOutgoing(txns);
       save();
       recompute();
       toast(`${txns.length} Buchungen gelesen`, 'ok');
+      // Überweisungen an bekannte Personen -> nachfragen, ob es Rückzahlungen sind.
+      if (pendingOutgoing().length) setTimeout(openRefundQuestions, 0);
     } catch (e) {
       console.warn('parse failed', e);
       toast('Datei konnte nicht gelesen werden', 'err');
@@ -650,6 +683,238 @@ export function splitStored(id) {
   openModal('Eingang aufteilen', splitModalHtml(txn), { onClose: () => { splitState = null; } });
 }
 
+// ---- Rückzahlungen (Ausgänge an Personen) ---------------------------------
+function outgoingLabel(o) {
+  return `${escapeHtml(fmtDate(o.date))} · an ${escapeHtml(o.name || '—')}${o.purpose ? ' · ' + escapeHtml(o.purpose) : ''}`;
+}
+
+// Abschnitt im Import-Screen: offene Fragen + bereits gebuchte Rückzahlungen.
+function outgoingHtml() {
+  const all = Object.values(state.outgoing || {});
+  if (!all.length) return '';
+  const pending = pendingOutgoing();
+  const booked = all.filter((o) => refundsForTxn(o.id).length)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 10);
+  const pRows = pending.map((o) => `<div class="imp-row" style="--sc:#8e6bd8">
+      <span class="dash-dot"></span>
+      <div class="dash-meta"><b>${fmtEUR(o.amount)}</b><small>${outgoingLabel(o)}</small></div>
+      <div class="imp-right"><div class="imp-btns">
+        <button class="btn btn-sm btn-primary" onclick="openRefund('${o.id}')">Rückzahlung</button>
+        <button class="btn btn-sm btn-ghost" title="Keine Rückzahlung" onclick="ignoreOutgoing('${o.id}')">Nein</button>
+      </div></div>
+    </div>`).join('');
+  const bRows = booked.map((o) => {
+    const tgt = refundsForTxn(o.id);
+    return `<div class="imp-row" style="--sc:#8e6bd8">
+      <span class="dash-dot"></span>
+      <div class="dash-meta"><b>${fmtEUR(o.amount)}</b><small>${outgoingLabel(o)}<br>↩ ${tgt.map((x) => escapeHtml(personName(x.personId)) + ' ' + fmtEUR(x.amount) + ' (' + escapeHtml(monthLabel(x.month)) + ')').join(', ')}</small></div>
+      <div class="imp-right"><button class="btn btn-sm btn-ghost" onclick="undoRefund('${o.id}')">Rückgängig</button></div>
+    </div>`;
+  }).join('');
+  if (!pRows && !bRows) return '';
+  return `
+    ${pRows ? `<div class="section-label">Überweisungen an Personen – Rückzahlung? (${pending.length})</div>
+    <div class="imp-list">${pRows}</div>` : ''}
+    ${bRows ? `<div class="section-label">Gebuchte Rückzahlungen</div><div class="imp-list">${bRows}</div>` : ''}`;
+}
+
+// Modal direkt nach dem Import: Liste aller unbeantworteten Ausgänge an Personen.
+export function openRefundQuestions() {
+  const pending = pendingOutgoing();
+  if (!pending.length) return;
+  openModal('Rückzahlungen?', `
+    <p class="muted small" style="margin:0 0 12px">Im Auszug sind Überweisungen <b>an</b> Personen aus deiner Liste. Waren das Rückzahlungen?
+      Dann werden sie vom erhaltenen Betrag abgezogen (ggf. aufgeteilt auf mehrere Einträge).</p>
+    <div class="imp-list">${pending.map((o) => `<div class="imp-row" style="--sc:#8e6bd8">
+      <span class="dash-dot"></span>
+      <div class="dash-meta"><b>${fmtEUR(o.amount)}</b><small>${outgoingLabel(o)}</small></div>
+      <div class="imp-right"><div class="imp-btns">
+        <button class="btn btn-sm btn-primary" onclick="openRefund('${o.id}')">Ja</button>
+        <button class="btn btn-sm btn-ghost" onclick="ignoreOutgoing('${o.id}', true)">Nein</button>
+      </div></div>
+    </div>`).join('')}</div>
+    <div class="modal-actions" style="margin-top:12px">
+      <button type="button" class="btn btn-ghost" onclick="closeModal()">Später</button>
+    </div>`);
+}
+
+export function ignoreOutgoing(id, fromQuestions) {
+  const o = state.outgoing && state.outgoing[id];
+  if (!o) return;
+  o.decision = 'ignore';
+  save();
+  afterChange();
+  if (fromQuestions) {
+    if (pendingOutgoing().length) openRefundQuestions();
+    else closeModal();
+  }
+}
+
+export function undoRefund(id) {
+  const n = unbookRefundTxn(id);
+  if (state.outgoing && state.outgoing[id]) state.outgoing[id].decision = '';
+  save();
+  afterChange();
+  toast(n ? 'Rückzahlung entfernt' : 'Nichts zu entfernen');
+}
+
+let refundState = null; // { txnId, month, date, note, total, rows: [{personId, amount}] }
+
+function refundModalHtml() {
+  const rs = refundState;
+  const o = rs.txnId && state.outgoing && state.outgoing[rs.txnId];
+  const rows = rs.rows.map((r, i) => `
+    <div class="fld-row" style="align-items:flex-end">
+      <label class="fld" style="flex:2"><span>Person / Kategorie</span><select name="ref_${i}_person">${splitPeopleOptions(r.personId)}</select></label>
+      <label class="fld"><span>Betrag (€)</span><input name="ref_${i}_amount" type="text" inputmode="decimal" value="${r.amount ? String(r.amount).replace('.', ',') : ''}"></label>
+      <button type="button" class="icon-btn danger" onclick="removeRefundRow(${i})" aria-label="Zeile entfernen">${ICO.trash}</button>
+    </div>`).join('');
+  return `
+    ${o ? `<p class="muted small" style="margin:0 0 10px">${outgoingLabel(o)} · gesamt <b>${fmtEUR(Math.abs(o.amount))}</b></p>` : ''}
+    <form id="refundForm" onsubmit="return false">
+      <div class="fld-row">
+        <label class="fld"><span>Abziehen im Monat</span><input name="month" type="month" value="${escapeHtml(rs.month)}"></label>
+        ${o ? '' : `<label class="fld"><span>am</span><input name="date" type="date" value="${escapeHtml(rs.date)}"></label>`}
+      </div>
+      ${rows}
+      <button type="button" class="btn btn-ghost btn-sm" onclick="addRefundRow()">${ICO.plus} Zeile (aufteilen)</button>
+      <label class="fld" style="margin-top:8px"><span>Notiz (optional)</span><input name="note" type="text" value="${escapeHtml(rs.note)}" placeholder="z. B. Überzahlung erstattet"></label>
+      <p class="muted small" style="margin:6px 0 0">Jede Zeile wird beim gewählten Eintrag im Monat als Rückzahlung gebucht und vom „Erhalten" abgezogen.
+        Bei Guthaben-Zahlern verkürzt sich dadurch der gedeckte Zeitraum.</p>
+      <div class="modal-actions" style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Abbrechen</button>
+        <button type="button" class="btn btn-primary" onclick="saveRefund()">Rückzahlung buchen</button>
+      </div>
+    </form>`;
+}
+function readRefundDom() {
+  const f = document.getElementById('refundForm');
+  if (!f || !refundState) return;
+  const fd = new FormData(f);
+  refundState.month = (fd.get('month') || '').toString() || refundState.month;
+  if (fd.has('date')) refundState.date = (fd.get('date') || '').toString();
+  refundState.note = (fd.get('note') || '').toString().trim();
+  refundState.rows.forEach((r, i) => {
+    r.personId = (fd.get(`ref_${i}_person`) || '').toString();
+    r.amount = parseEUR((fd.get(`ref_${i}_amount`) || '0').toString()) || 0;
+  });
+}
+
+// txnId = Ausgangs-Transaktion aus dem Import, '' = manuelle Rückzahlung (PayPal/bar …).
+export function openRefund(txnId) {
+  const o = txnId && state.outgoing && state.outgoing[txnId];
+  if (txnId && !o) return;
+  const total = o ? Math.round(Math.abs(o.amount) * 100) / 100 : 0;
+  let rows;
+  if (o && o.personIds && o.personIds.length) {
+    // Eine Zeile je erkanntem Eintrag; bei nur einem Eintrag gleich den vollen Betrag.
+    rows = o.personIds.map((pid, i) => ({ personId: pid, amount: o.personIds.length === 1 && i === 0 ? total : 0 }));
+  } else {
+    rows = [{ personId: '', amount: total }];
+  }
+  refundState = { txnId: txnId || '', month: o ? monthKey(o.date) : importMonth, date: o ? o.date : todayISO(), note: '', total, rows };
+  openModal(o ? `Rückzahlung ${fmtEUR(total)}` : 'Rückzahlung buchen', refundModalHtml(), { onClose: () => { refundState = null; } });
+}
+export function addRefundRow() {
+  readRefundDom();
+  refundState.rows.push({ personId: '', amount: 0 });
+  updateModalBody(refundModalHtml());
+}
+export function removeRefundRow(i) {
+  readRefundDom();
+  refundState.rows.splice(i, 1);
+  if (!refundState.rows.length) refundState.rows.push({ personId: '', amount: 0 });
+  updateModalBody(refundModalHtml());
+}
+export function saveRefund() {
+  readRefundDom();
+  const rs = refundState;
+  if (!rs) return;
+  const rows = rs.rows.filter((r) => r.personId && r.amount > 0);
+  if (!rows.length) { toast('Bitte Person und Betrag angeben', 'err'); return; }
+  const sum = Math.round(rows.reduce((a, r) => a + r.amount, 0) * 100) / 100;
+  if (rs.txnId && Math.abs(sum - rs.total) > 0.005) {
+    toast(`Summe ${fmtEUR(sum)} ≠ Überweisung ${fmtEUR(rs.total)}`, 'err');
+    return;
+  }
+  for (const r of rows) {
+    bookRefund(r.personId, rs.month, { amount: r.amount, date: rs.date, txnId: rs.txnId, note: rs.note || 'Rückzahlung' });
+  }
+  if (rs.txnId && state.outgoing[rs.txnId]) state.outgoing[rs.txnId].decision = 'refund';
+  save();
+  refundState = null;
+  closeModal();
+  afterChange();
+  toast(`Rückzahlung ${fmtEUR(sum)} gebucht`, 'ok');
+  // Weitere offene Fragen aus dem Import direkt anschließen.
+  if (rs.txnId && pendingOutgoing().length) setTimeout(openRefundQuestions, 0);
+}
+
+// ---- Detailansicht eines gespeicherten Eingangs ---------------------------
+function txnDetailHtml(t) {
+  const tgt = assignedMap()[t.id];
+  const row = (k, v) => v ? `<div class="cost-row static" style="align-items:flex-start;gap:12px"><span>${k}</span><b style="text-align:right;word-break:break-word">${v}</b></div>` : '';
+  let status, actions;
+  if (tgt) {
+    status = `<span style="color:#2fb86b">Zugeordnet</span>`;
+    actions = `<p class="muted small" style="margin:0 0 8px">Gebucht bei:</p>
+      ${tgt.map((x) => `<button class="pick-row" onclick="openLedgerCell('${x.personId}','${x.month}')">${escapeHtml(personName(x.personId))}<span class="muted small">${escapeHtml(monthLabel(x.month))} ›</span></button>`).join('')}
+      <p class="muted small" style="margin:8px 0 0">Ändern oder lösen über die jeweilige Zelle im Soll/Ist.</p>`;
+  } else if (t.ignored) {
+    status = `<span style="color:var(--tx3)">Muss nicht zugeordnet werden</span>`;
+    actions = `<div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Schließen</button>
+        <button type="button" class="btn btn-primary" onclick="unignoreTxn('${t.id}')">↺ Rückgängig (wieder offen)</button>
+      </div>`;
+  } else {
+    status = `<span style="color:var(--warn)">Nicht zugeordnet</span>`;
+    actions = `<div class="modal-actions" style="flex-wrap:wrap">
+        <button type="button" class="btn btn-primary" onclick="assignStored('${t.id}')">Zuordnen</button>
+        <button type="button" class="btn btn-ghost" onclick="splitStored('${t.id}')">Aufteilen</button>
+      </div>
+      <div class="card" style="margin-top:12px;padding:10px 12px">
+        <label class="fld"><span>Grund (optional)</span><input id="ignoreNote" type="text" list="ignoreNoteList" placeholder="z. B. Privat, Gehalt, Umbuchung"></label>
+        <datalist id="ignoreNoteList">${[...new Set(['Privat', 'Gehalt', 'Umbuchung', 'Erstattung', ...Object.values(state.transactions || {}).map((x) => x.ignoreNote).filter(Boolean)])].map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>
+        <button type="button" class="btn btn-ghost full" style="margin-top:8px" onclick="ignoreTxn('${t.id}')">Muss nicht zugeordnet werden</button>
+        <p class="muted small" style="margin:6px 0 0">Verschiebt den Eingang nach „Nicht nötig“ – jederzeit rückgängig machbar.</p>
+      </div>`;
+  }
+  return `
+    <div style="font-size:26px;font-weight:800;margin:0 0 10px">${fmtEUR(t.amount)}</div>
+    ${row('Status', status)}
+    ${row('Datum', escapeHtml(fmtDate(t.date)))}
+    ${row('Von', escapeHtml(t.name || '—'))}
+    ${row('IBAN', escapeHtml(t.iban || ''))}
+    ${row('Verwendungszweck', escapeHtml(t.purpose || ''))}
+    ${t.ignored && t.ignoreNote && !tgt ? row('Grund', escapeHtml(t.ignoreNote)) : ''}
+    <div style="margin-top:14px">${actions}</div>`;
+}
+export function openTxnDetail(id) {
+  const t = findAnyTxn(id);
+  if (!t) return;
+  openModal('Eingang', txnDetailHtml(t));
+}
+export function ignoreTxn(id) {
+  const t = state.transactions && state.transactions[id];
+  if (!t) return;
+  const el = document.getElementById('ignoreNote');
+  t.ignored = true;
+  t.ignoreNote = el ? el.value.trim() : '';
+  save();
+  closeModal();
+  afterChange();
+  toast('Als „nicht nötig" markiert', 'ok');
+}
+export function unignoreTxn(id) {
+  const t = state.transactions && state.transactions[id];
+  if (!t) return;
+  delete t.ignored; delete t.ignoreNote;
+  save();
+  updateModalBody(txnDetailHtml(t));
+  afterChange();
+  toast('Wieder offen');
+}
+
 function afterChange() {
   renderImport();
   rerenderDashboard();
@@ -661,5 +926,7 @@ Object.assign(window, {
   rejectAssignment, assignUnmatched, assignUnmatchedTo,
   openManualPayment, saveManualPayment, declareIncome, saveIncome,
   splitUnmatched, addSplitRow, removeSplitRow, saveSplit,
-  setTxnQuery, setTxnFilter, assignStored, assignStoredTo, splitStored
+  setTxnQuery, setTxnFilter, assignStored, assignStoredTo, splitStored,
+  openTxnDetail, ignoreTxn, unignoreTxn,
+  openRefund, addRefundRow, removeRefundRow, saveRefund, ignoreOutgoing, undoRefund, openRefundQuestions
 });

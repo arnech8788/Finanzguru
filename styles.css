@@ -250,6 +250,7 @@ svg { width: 22px; height: 22px; flex: none; }
 .lg-cell.lg-open { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
 .lg-cell.lg-partial { background: color-mix(in srgb, var(--amber) 26%, transparent); color: var(--amber); }
 .lg-cell.lg-advance { background: color-mix(in srgb, var(--info) 24%, transparent); color: var(--info); }
+.lg-cell.lg-refund { background: color-mix(in srgb, #8e6bd8 22%, transparent); color: #8e6bd8; }
 .lg-cell.lg-none { background: transparent; color: var(--tx3); }
 .lg-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
 .lg-leg { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--tx2); }
@@ -264,6 +265,8 @@ svg { width: 22px; height: 22px; flex: none; }
 .imp-stats { display: flex; gap: 14px; font-size: 13px; color: var(--tx2); margin-bottom: 12px; }
 .imp-list { display: flex; flex-direction: column; gap: 8px; }
 .imp-row { display: flex; align-items: center; gap: 11px; background: var(--bg2); border: 1px solid var(--bdr); border-radius: var(--r-sm); padding: 10px 12px; }
+.imp-row.imp-click { cursor: pointer; }
+.imp-row.imp-click:active { background: var(--bg3, var(--bg2)); }
 .imp-right { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .imp-btns { display: flex; gap: 6px; align-items: center; }
 .imp-reject { padding: 8px; color: var(--tx2); }

@@ -10,7 +10,7 @@ let onlyOpen = false;
 let dashCategory = '';   // '' = alle Kategorien
 let lastCats = [];       // im Render gefüllt, für index-basierte Auswahl
 
-const ORDER = { open: 0, partial: 1, none: 2, advance: 3, paid: 4 };
+const ORDER = { open: 0, partial: 1, refund: 2, none: 2, advance: 3, paid: 4 };
 const catOf = (p) => p.category || 'Ohne Kategorie';
 
 export function setDashMonth(delta) {

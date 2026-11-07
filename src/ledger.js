@@ -9,6 +9,7 @@ export const STATUS = {
   open: { label: 'Offen', color: '#e23b3b' },
   partial: { label: 'Teilweise', color: '#f5a623' },
   advance: { label: 'Voraus', color: '#2d9cdb' },
+  refund: { label: 'Erstattet', color: '#8e6bd8' },
   none: { label: 'Nicht fällig', color: '#5b6270' }
 };
 
@@ -52,6 +53,55 @@ export function addReceived(personId, month, amount, receivedDate, matchedTxnId)
   const prev = getReceived(personId, month);
   const sum = (prev ? Number(prev.received) || 0 : 0) + (Number(amount) || 0);
   setReceived(personId, month, { received: sum, receivedDate, matchedTxnId });
+}
+
+// ---- Rückzahlungen (Geld an eine Person zurücküberwiesen) -----------------
+// Eine Rückzahlung verringert den Netto-Eingang (`received`) der Zelle – damit
+// rechnen Status, Guthaben-Topf, Summen und Erinnerungen automatisch richtig.
+// Zur Nachvollziehbarkeit wird sie zusätzlich in `entry.refunds` protokolliert.
+//  refund = { amount (>0), date, txnId?, note? }
+export function bookRefund(personId, month, refund) {
+  const amount = Math.abs(Number(refund.amount) || 0);
+  if (!(amount > 0)) return;
+  const b = bucket(personId);
+  const entry = b[month] || {};
+  entry.received = Math.round(((Number(entry.received) || 0) - amount) * 100) / 100;
+  entry.refunds = [...(entry.refunds || []), {
+    amount, date: refund.date || '', txnId: refund.txnId || '', note: refund.note || ''
+  }];
+  entry.updated = Date.now();
+  b[month] = entry;
+}
+
+// Alle zu einer Ausgangs-Transaktion gebuchten Rückzahlungen: [{ personId, month, amount }]
+export function refundsForTxn(txnId) {
+  const hits = [];
+  if (!txnId) return hits;
+  for (const [pid, months] of Object.entries(state.ledger || {})) {
+    for (const [m, e] of Object.entries(months || {})) {
+      for (const r of (e && e.refunds) || []) if (r.txnId === txnId) hits.push({ personId: pid, month: m, amount: r.amount });
+    }
+  }
+  return hits;
+}
+
+// Rückzahlungen einer Transaktion wieder entfernen (Netto-Eingang zurücksetzen).
+export function unbookRefundTxn(txnId) {
+  let n = 0;
+  for (const months of Object.values(state.ledger || {})) {
+    for (const [m, e] of Object.entries(months || {})) {
+      if (!e || !Array.isArray(e.refunds)) continue;
+      const keep = [];
+      for (const r of e.refunds) {
+        if (r.txnId === txnId) { e.received = Math.round(((Number(e.received) || 0) + (Number(r.amount) || 0)) * 100) / 100; n++; }
+        else keep.push(r);
+      }
+      if (keep.length) e.refunds = keep; else delete e.refunds;
+      // Zelle war nur durch die Rückzahlung entstanden -> ganz entfernen.
+      if (!e.refunds && !(Number(e.received)) && !e.receivedDate && !e.note && !e.extraDue && !e.covered && !e.matchedTxnId) delete months[m];
+    }
+  }
+  return n;
 }
 
 export function clearReceived(personId, month) {
@@ -157,6 +207,16 @@ function prepaidCellStatus(person, month) {
 
 // ---- Status ---------------------------------------------------------------
 export function statusFor(person, month) {
+  const st = baseStatus(person, month);
+  if (st === 'none' || st === 'paid' || st === 'advance') {
+    // Netto negativ (nur Rückzahlung, nichts fällig) -> als „Erstattet" sichtbar machen.
+    const e = getReceived(person.id, month);
+    if (e && (Number(e.received) || 0) < -0.005) return 'refund';
+  }
+  return st;
+}
+
+function baseStatus(person, month) {
   if (person.schedule === 'prepaid') return prepaidCellStatus(person, month);
   const exp = effectiveExpected(person, month);
   const entry = getReceived(person.id, month);
@@ -212,7 +272,8 @@ export function renderLedger() {
       const meta = STATUS[st];
       const entry = getReceived(person.id, m);
       const rec = entry ? Number(entry.received) || 0 : 0;
-      const label = st === 'none' ? '' : (rec > 0 ? fmtEUR(rec).replace(/\s?€/, '') : (st === 'open' ? '–' : ''));
+      const hasRefund = !!(entry && entry.refunds && entry.refunds.length);
+      const label = (hasRefund ? '↩ ' : '') + (st === 'none' && !rec ? '' : (Math.abs(rec) > 0.005 ? fmtEUR(rec).replace(/\s?€/, '') : (st === 'open' ? '–' : '')));
       return `<td><button class="lg-cell lg-${st}" style="--sc:${meta.color}"
         onclick="openLedgerCell('${person.id}','${m}')" title="${escapeHtml(meta.label)}">${escapeHtml(label)}</button></td>`;
     }).join('');
@@ -267,8 +328,12 @@ export function openLedgerCell(personId, month) {
         <div><span class="muted small">Soll (${escapeHtml(scheduleLabel(person.schedule))})</span><b>${target > 0 ? fmtEUR(target) : '– (vorausbezahlt/kein Fälligkeitsmonat)'}${extra > 0 ? ` <span class="muted small">(inkl. ${fmtEUR(extra)} einmalig)</span>` : ''}</b></div>
         <div><span class="muted small">Status</span><b style="color:${STATUS[st].color}">${STATUS[st].label}</b></div>
       </div>
+      ${(entry.refunds || []).length ? `<div class="card" style="margin:0 0 10px;padding:10px 12px">
+        <div class="muted small" style="margin-bottom:4px">${ICO.info} Enthaltene Rückzahlungen (bereits vom Erhalten abgezogen):</div>
+        ${entry.refunds.map((r) => `<div class="cost-row static"><span>↩ ${escapeHtml(fmtDate(r.date) || '—')}${r.note ? ' · ' + escapeHtml(r.note) : ''}</span><b>−${fmtEUR(r.amount)}</b></div>`).join('')}
+      </div>` : ''}
       <div class="fld-row">
-        <label class="fld"><span>Erhalten (€)</span><input name="received" type="text" inputmode="decimal" value="${entry.received != null ? String(entry.received).replace('.', ',') : ''}" placeholder="${target > 0 ? String(target).replace('.', ',') : '0'}"></label>
+        <label class="fld"><span>Erhalten (€, netto)</span><input name="received" type="text" inputmode="decimal" value="${entry.received != null ? String(entry.received).replace('.', ',') : ''}" placeholder="${target > 0 ? String(target).replace('.', ',') : '0'}"></label>
         <label class="fld"><span>am</span><input name="date" type="date" value="${escapeHtml(entry.receivedDate || '')}"></label>
       </div>
       <label class="fld"><span>Notiz (optional)</span><input name="note" type="text" value="${escapeHtml(entry.note || '')}" placeholder="z. B. per PayPal"></label>
@@ -324,8 +389,13 @@ export function saveLedgerCell(personId, month) {
   };
   if (target !== month) {
     // Eintrag in den gewählten Zielmonat verschieben, Ursprungsmonat leeren.
-    payload.matchedTxnId = (getReceived(personId, month) || {}).matchedTxnId || '';
+    const src = getReceived(personId, month) || {};
+    payload.matchedTxnId = src.matchedTxnId || '';
     setReceived(personId, target, payload);
+    if (src.refunds && src.refunds.length) {
+      const t = getReceived(personId, target);
+      t.refunds = [...(t.refunds || []), ...src.refunds];
+    }
     clearReceived(personId, month);
   } else {
     setReceived(personId, month, payload);
