@@ -29,6 +29,8 @@ Update-Toast via `registerSW({ onNeedRefresh })` in `src/main.js`. PDF-Parsing n
 - **Immer auf `dev` entwickeln**, committen und pushen (`git push -u origin dev`).
 - **Nie ungefragt nach `main` mergen/pushen** (`main` = Live-Deployment). Nach Abschluss
   einer Änderung den Nutzer fragen, ob `dev` in `main` gemergt werden soll.
+- **Bei jeder Änderung Changelog pflegen**: `APP_VERSION` in `src/main.js` hochzählen und
+  oben in `CHANGELOG` einen Eintrag (deutsch, nutzerverständlich) ergänzen.
 
 ## Deployment
 
