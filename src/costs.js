@@ -2,7 +2,8 @@
 // Zusätzlich Unter-Tab „Rechnungen" (importierte Telekom-Rechnungen + Abgleich).
 import { ICO, escapeHtml, toast } from './ui.js';
 import { state, save } from './main.js';
-import { fmtEUR, parseEUR } from './money.js';
+import { fmtEUR, parseEUR, currentMonth } from './money.js';
+import { monthlyAmount } from './data/schedules.js';
 import { renderInvoicesInto } from './invoices.js';
 
 let costsTab = 'kosten'; // 'kosten' | 'rechnungen'
@@ -29,7 +30,7 @@ function cardCounts() {
 }
 
 function incomeSum() {
-  return state.people.reduce((s, p) => s + (Number(p.expectedAmount) || 0), 0);
+  return state.people.filter((p) => !p.archived).reduce((s, p) => s + (monthlyAmount(p, currentMonth()) || 0), 0);
 }
 
 function planCost() {
@@ -95,7 +96,7 @@ export function renderCosts() {
 
       <div class="card">
         <div class="card-title">Einnahmen (automatisch aus „Personen")</div>
-        <div class="cost-row static"><span>${state.people.length} Personen · monatlicher Anteil gesamt</span><b>${fmtEUR(income)}</b></div>
+        <div class="cost-row static"><span>${state.people.filter((p) => !p.archived).length} aktive Personen · monatlicher Anteil gesamt</span><b>${fmtEUR(income)}</b></div>
         <div class="cost-row static"><span>Karten gesamt</span><b>${counts.total} (${counts.plus} PlusKarte, ${counts.multi} MultiSIM)</b></div>
       </div>
 

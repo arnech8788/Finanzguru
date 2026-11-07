@@ -9,7 +9,7 @@ import { statusFor, STATUS, renderLedger, prepaidStats, getReceived, partsFor, t
 import { matchesPersonTxn } from './match.js';
 import { personReminders } from './remind.js';
 
-let filter = { query: '' };
+let filter = { query: '', archived: false };
 let draft = null; // aktuell bearbeitete Person (Arbeitskopie)
 
 function uid() {
@@ -22,6 +22,11 @@ function blankPerson() {
   return { id: uid(), name: '', category: '', contactApp: '', contact: '', ibans: [], paymentMethod: 'ueberweisung', schedule: 'monthly', dayOfMonth: 1, anchorMonth: '', startMonth: '', expectedAmount: 0, amountChanges: [], cards: [], notes: '' };
 }
 
+export function setPeopleArchived(v) {
+  filter.archived = !!v;
+  renderPeople();
+}
+
 export function setPeopleSearch(q) {
   filter.query = q;
   renderPeople({ keepFocus: true });
@@ -31,7 +36,10 @@ export function renderPeople(opts = {}) {
   const el = document.getElementById('screen-people');
   if (!el) return;
   const q = filter.query.trim().toLowerCase();
-  let people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  const archivedCount = state.people.filter((p) => p.archived).length;
+  if (!archivedCount) filter.archived = false;
+  let people = state.people.filter((p) => !!p.archived === filter.archived)
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
   if (q) {
     people = people.filter((p) =>
       ((p.name || '') + ' ' + (p.notes || '') + ' ' + (p.ibans || []).join(' ') + ' ' +
@@ -46,7 +54,11 @@ export function renderPeople(opts = {}) {
         <input id="peopleSearch" type="search" placeholder="Name, IBAN, Telefon, SIM…"
                value="${escapeHtml(filter.query)}" oninput="setPeopleSearch(this.value)" autocomplete="off">
       </div>
-      ${people.length ? people.map((p) => personCard(p, q, month)).join('') : emptyPeople()}
+      ${archivedCount ? `<div class="cat-chips" style="margin:10px 0 4px">
+        <button class="catchip ${!filter.archived ? 'catchip-active' : ''}" onclick="setPeopleArchived(false)">Aktiv <span class="cc-count">${state.people.length - archivedCount}</span></button>
+        <button class="catchip ${filter.archived ? 'catchip-active' : ''}" onclick="setPeopleArchived(true)">Archiv <span class="cc-count">${archivedCount}</span></button>
+      </div>` : ''}
+      ${people.length ? people.map((p) => personCard(p, q, month)).join('') : (filter.archived ? '<p class="muted small" style="margin-top:12px">Keine archivierten Personen.</p>' : emptyPeople())}
     </div>
     <button class="fab" onclick="newPerson()" aria-label="Neue Person">${ICO.plus}</button>`;
   if (opts.keepFocus) {
@@ -68,7 +80,7 @@ function personCard(p, q, month) {
       <span class="dash-dot" title="${escapeHtml(meta.label)}"></span>
       <div class="pc-main">
         <div class="pc-title">${highlight(escapeHtml(p.name || '(ohne Name)'), q)}</div>
-        <div class="pc-sub">${amt ? fmtEUR(amt) + ' · ' : ''}${escapeHtml(scheduleLabel(p.schedule))} · ${escapeHtml(paymentMethodLabel(p.paymentMethod))}</div>
+        <div class="pc-sub">${p.archived ? `archiviert${p.endMonth ? ' · Ende ' + escapeHtml(monthLabel(p.endMonth)) : ''} · ` : (p.endMonth ? `endet ${escapeHtml(monthLabel(p.endMonth))} · ` : '')}${amt ? fmtEUR(amt) + ' · ' : ''}${escapeHtml(scheduleLabel(p.schedule))} · ${escapeHtml(paymentMethodLabel(p.paymentMethod))}</div>
         <div class="pc-meta">${ICO.sim} ${escapeHtml(cardSummary)}</div>
       </div>
     </div>`;
@@ -168,6 +180,10 @@ function personViewHtml(p) {
   const cards = (p.cards || []);
   return `
     <div class="person-view">
+      ${p.archived || p.endMonth ? `<div class="card" style="margin:0 0 12px;padding:10px 12px;border-color:var(--amber)">
+        <b>${p.archived ? '🗄 Archiviert' : '⏹ Beendet'}</b>${p.endMonth ? ` · letzter Beitragsmonat ${escapeHtml(monthLabel(p.endMonth))}` : ''}
+        <p class="muted small" style="margin:4px 0 0">${p.archived ? 'Ausgeblendet in Personen, Übersicht, Soll/Ist und Import (Historie bleibt erhalten).' : 'Ab dem Folgemonat wird kein Beitrag mehr erwartet.'}</p>
+      </div>` : ''}
       <div class="pv-grid">
         <div><span class="muted small">Monatlicher Anteil</span><b>${amt ? fmtEUR(amt) : '–'}</b></div>
         <div><span class="muted small">Rhythmus</span><b>${escapeHtml(scheduleLabel(p.schedule))}</b></div>
@@ -187,9 +203,12 @@ function personViewHtml(p) {
       <button class="btn btn-ghost full" style="margin-top:14px" onclick="openPersonPayments('${p.id}')">${ICO.calendar || ''} Alle Zahlungen anzeigen</button>
       ${learnedSection(p)}
       <div class="modal-actions" style="margin-top:18px">
-        <button class="btn btn-danger" onclick="deletePerson('${p.id}')">${ICO.trash} Löschen</button>
+        ${p.archived
+          ? `<button class="btn btn-ghost" onclick="reactivatePerson('${p.id}')">↺ Reaktivieren</button>`
+          : `<button class="btn btn-ghost" onclick="openEndPerson('${p.id}')">⏹ Beenden / Archivieren</button>`}
         <button class="btn btn-primary" onclick="editPerson('${p.id}')">${ICO.edit} Bearbeiten</button>
       </div>
+      ${p.archived ? `<button class="btn btn-danger btn-sm" style="margin-top:12px" onclick="deletePerson('${p.id}')">${ICO.trash} Endgültig löschen</button>` : ''}
     </div>`;
 }
 
@@ -562,6 +581,52 @@ export function savePerson() {
   toast(existing ? 'Gespeichert' : 'Person angelegt', 'ok');
 }
 
+// ---- Beenden / Archivieren (statt Löschen) --------------------------------
+export function openEndPerson(id) {
+  const p = state.people.find((x) => x.id === id);
+  if (!p) return;
+  openModal(`${p.name || 'Person'} beenden`, `
+    <form id="endForm" onsubmit="return false">
+      <label class="fld"><span>Letzter Beitragsmonat</span><input name="endMonth" type="month" value="${escapeHtml(p.endMonth || currentMonth())}"></label>
+      <p class="muted small" style="margin:2px 0 10px">Bis einschließlich dieses Monats wird der Beitrag erwartet, danach nicht mehr (auch keine Erinnerungen).
+        Die Zahlungshistorie bleibt vollständig erhalten.</p>
+      <label class="cost-row" style="margin:0 0 6px"><span>Archivieren (überall ausblenden)</span>
+        <input type="checkbox" name="archive" checked></label>
+      <p class="muted small" style="margin:0 0 8px">Archivierte findest du unter Personen → „Archiv“ bzw. im Soll/Ist über „Archivierte anzeigen“ – und kannst sie dort reaktivieren.</p>
+      <div class="modal-actions" style="margin-top:12px">
+        <button type="button" class="btn btn-ghost" onclick="openPerson('${p.id}')">Abbrechen</button>
+        <button type="button" class="btn btn-primary" onclick="saveEndPerson('${p.id}')">Übernehmen</button>
+      </div>
+    </form>`);
+}
+export function saveEndPerson(id) {
+  const p = state.people.find((x) => x.id === id);
+  const f = document.getElementById('endForm');
+  if (!p || !f) return;
+  const fd = new FormData(f);
+  p.endMonth = (fd.get('endMonth') || '').toString();
+  p.archived = !!fd.get('archive');
+  save();
+  closeModal();
+  afterPeopleChange();
+  toast(p.archived ? 'Archiviert' : `Beendet nach ${monthLabel(p.endMonth)}`, 'ok');
+}
+export function reactivatePerson(id) {
+  const p = state.people.find((x) => x.id === id);
+  if (!p) return;
+  delete p.archived;
+  delete p.endMonth;
+  save();
+  afterPeopleChange();
+  updateModalBody(personViewHtml(p), p.name || 'Person');
+  toast('Reaktiviert', 'ok');
+}
+function afterPeopleChange() {
+  renderPeople();
+  rerenderDashboard();
+  renderLedger();
+}
+
 export async function deletePerson(id) {
   const p = state.people.find((x) => x.id === id);
   const ok = await confirmDialog(`„${p ? p.name : 'Person'}" wirklich löschen? Die Zahlungshistorie dieser Person geht verloren.`, { okLabel: 'Löschen', danger: true });
@@ -580,7 +645,7 @@ export async function deletePerson(id) {
 export function closePersonModal() { draft = null; closeModal(); }
 
 Object.assign(window, {
-  renderPeople, setPeopleSearch, newPerson, editPerson, openPerson, openPersonPayments, togglePayAll,
+  renderPeople, setPeopleSearch, setPeopleArchived, openEndPerson, saveEndPerson, reactivatePerson, newPerson, editPerson, openPerson, openPersonPayments, togglePayAll,
   addCard, removeCard, savePerson, deletePerson, closePersonModal,
   removePersonIban, removeNameAlias, removePayAlias, resetLearned, setCardRuntime,
   addAmountChange, removeAmountChange

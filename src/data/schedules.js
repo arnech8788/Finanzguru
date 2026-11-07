@@ -38,6 +38,8 @@ export function isDueMonth(person, ym) {
 // Monatlicher Anteil, der in `ym` gilt: Basisbetrag (expectedAmount) plus spätere
 // Änderungen (amountChanges = [{from:'YYYY-MM', amount}]) ab dem jeweiligen Monat.
 export function monthlyAmount(person, ym) {
+  // Nach dem Ende (letzter Beitragsmonat) wird nichts mehr erwartet/verbraucht.
+  if (person.endMonth && String(ym) > String(person.endMonth)) return 0;
   let amt = Number(person.expectedAmount) || 0;
   const changes = (person.amountChanges || [])
     .filter((c) => c && c.from)
@@ -59,4 +61,9 @@ export function expectedForMonth(person, ym) {
 // Anzahl Monate, die eine Fälligkeit abdeckt (für Anzeige „deckt N Monate ab").
 export function coverageMonths(person) {
   return schedulePeriod(person.schedule);
+}
+
+// Aktive (nicht archivierte) Personen.
+export function activePeople(list) {
+  return (list || []).filter((p) => !p.archived);
 }

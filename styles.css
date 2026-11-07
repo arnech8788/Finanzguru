@@ -321,3 +321,4 @@ a { color: var(--accent); }
 .swipe-bg { position: absolute; inset: 0; display: flex; align-items: center; padding-left: 18px; font-weight: 700; font-size: 14px; color: var(--tx2); background: var(--bg3); border-radius: var(--r-sm); transition: background .15s, color .15s; }
 .swipe-wrap.swipe-armed .swipe-bg { background: var(--ok); color: #fff; }
 .imp-row.swipeable { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.lg-archived .lg-name, .lg-archived td { opacity: .55; }

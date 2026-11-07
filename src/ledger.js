@@ -15,6 +15,8 @@ export const STATUS = {
 
 let viewEnd = currentMonth();
 let viewSize = 6;
+let showArchived = false;
+export function toggleLedgerArchived() { showArchived = !showArchived; renderLedger(); }
 
 // ---- Datenzugriff ---------------------------------------------------------
 function bucket(personId) {
@@ -349,7 +351,9 @@ export function renderLedger() {
   const el = document.getElementById('screen-ledger');
   if (!el) return;
   const months = lastMonths(viewSize, viewEnd);
-  const people = [...state.people].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  const archivedCount = state.people.filter((p) => p.archived).length;
+  const people = state.people.filter((p) => showArchived || !p.archived)
+    .sort((a, b) => (!!a.archived - !!b.archived) || (a.name || '').localeCompare(b.name || '', 'de'));
 
   const head = `<th class="lg-name-h">Person</th>` +
     months.map((m) => `<th>${escapeHtml(monthShort(m))}</th>`).join('');
@@ -366,10 +370,11 @@ export function renderLedger() {
         onclick="openLedgerCell('${person.id}','${m}')" title="${escapeHtml(meta.label)}">${escapeHtml(label)}</button></td>`;
     }).join('');
     const cu = coveredUntil(person, currentMonth());
-    const cov = cu ? 'bis ' + monthShort(cu) : (person.schedule === 'prepaid' ? 'Guthaben leer' : '');
+    const cov = person.archived ? ('archiviert' + (person.endMonth ? ' · Ende ' + monthShort(person.endMonth) : ''))
+      : (person.endMonth ? 'endet ' + monthShort(person.endMonth) + ' · ' : '') + (cu ? 'bis ' + monthShort(cu) : (person.schedule === 'prepaid' ? 'Guthaben leer' : ''));
     const subTxt = [person.category, cov].filter(Boolean).join(' · ');
     const sub = subTxt ? `<div style="font-weight:400;font-size:10px;color:var(--tx3);margin-top:2px">${escapeHtml(subTxt)}</div>` : '';
-    return `<tr><th class="lg-name" onclick="openPerson('${person.id}')">${escapeHtml(person.name || '(ohne Name)')}${sub}</th>${cells}</tr>`;
+    return `<tr${person.archived ? ' class="lg-archived"' : ''}><th class="lg-name" onclick="openPerson('${person.id}')">${escapeHtml(person.name || '(ohne Name)')}${sub}</th>${cells}</tr>`;
   }).join('');
 
   el.innerHTML = `
@@ -391,6 +396,7 @@ export function renderLedger() {
         ${Object.entries(STATUS).filter(([k]) => k !== 'none').map(([k, s]) =>
           `<span class="lg-leg"><i style="background:${s.color}"></i>${escapeHtml(s.label)}</span>`).join('')}
       </div>
+      ${archivedCount ? `<button class="btn btn-ghost btn-sm" style="margin-top:12px" onclick="toggleLedgerArchived()">${showArchived ? 'Archivierte ausblenden' : `Archivierte anzeigen (${archivedCount})`}</button>` : ''}
       <p class="muted small" style="margin-top:14px">Tippe eine Zelle, um den Zahlungseingang zu bearbeiten. Tippe einen Namen, um die Person zu öffnen.</p>
       `}
     </div>`;
@@ -505,5 +511,5 @@ export function clearLedgerCell(personId, month) {
 }
 
 Object.assign(window, {
-  renderLedger, setLedgerWindow, openLedgerCell, saveLedgerCell, clearLedgerCell, markCellPaid
+  renderLedger, setLedgerWindow, toggleLedgerArchived, openLedgerCell, saveLedgerCell, clearLedgerCell, markCellPaid
 });
