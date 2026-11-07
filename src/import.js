@@ -23,7 +23,10 @@ function persistTxns(txns) {
   if (!state.transactions || typeof state.transactions !== 'object') state.transactions = {};
   for (const t of txns) {
     if (!(t.amount > 0)) continue;
+    const prev = state.transactions[t.id];
     state.transactions[t.id] = { id: t.id, date: t.date, name: t.name || '', iban: t.iban || '', purpose: t.purpose || '', amount: t.amount };
+    // „Muss nicht zugeordnet werden" bei erneutem Import beibehalten.
+    if (prev && prev.ignored) { state.transactions[t.id].ignored = true; state.transactions[t.id].ignoreNote = prev.ignoreNote || ''; }
   }
 }
 
@@ -112,8 +115,10 @@ function storedIncomeHtml() {
   const q = txnQuery.trim().toLowerCase();
   const list = all.filter((t) => {
     const isAssigned = !!amap[t.id];
-    if (txnFilter === 'unassigned' && isAssigned) return false;
+    const isIgnored = !isAssigned && !!t.ignored;
+    if (txnFilter === 'unassigned' && (isAssigned || isIgnored)) return false;
     if (txnFilter === 'assigned' && !isAssigned) return false;
+    if (txnFilter === 'ignored' && !isIgnored) return false;
     if (q) {
       const hay = `${t.name} ${t.purpose} ${fmtEUR(t.amount)} ${fmtDate(t.date)} ${t.date}`.toLowerCase();
       if (!hay.includes(q)) return false;
@@ -121,33 +126,35 @@ function storedIncomeHtml() {
     return true;
   }).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const total = all.length;
-  const unassigned = all.filter((t) => !amap[t.id]).length;
+  const ignored = all.filter((t) => !amap[t.id] && t.ignored).length;
+  const unassigned = all.filter((t) => !amap[t.id] && !t.ignored).length;
   const shown = list.slice(0, 200);
   const chip = (f, label, n) => `<button class="catchip ${txnFilter === f ? 'catchip-active' : ''}" onclick="setTxnFilter('${f}')">${label} <span class="cc-count">${n}</span></button>`;
   const rows = shown.map((t) => {
     const tgt = amap[t.id];
+    const isIgnored = !tgt && t.ignored;
     const right = tgt
       ? `<span class="muted small">→ ${tgt.map((x) => escapeHtml(personName(x.personId)) + ' (' + escapeHtml(monthLabel(x.month)) + ')').join(', ')}</span>`
-      : `<div class="imp-btns">
-          <button class="btn btn-sm btn-primary" onclick="assignStored('${t.id}')">Zuordnen</button>
-          <button class="btn btn-sm btn-ghost" onclick="splitStored('${t.id}')">Aufteilen</button>
-        </div>`;
-    return `<div class="imp-row">
-      <span class="dash-dot" style="--sc:${tgt ? '#2fb86b' : '#5b6270'}"></span>
+      : isIgnored
+        ? `<span class="muted small">nicht nötig${t.ignoreNote ? ' · ' + escapeHtml(t.ignoreNote) : ''}</span>`
+        : `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();assignStored('${t.id}')">Zuordnen</button>`;
+    return `<div class="imp-row imp-click" role="button" tabindex="0" onclick="openTxnDetail('${t.id}')">
+      <span class="dash-dot" style="--sc:${tgt ? '#2fb86b' : isIgnored ? '#8a919e' : '#5b6270'}"></span>
       <div class="dash-meta"><b>${fmtEUR(t.amount)}</b>
         <small>${escapeHtml(fmtDate(t.date))} · ${escapeHtml(t.name || '—')}${t.purpose ? ' · ' + escapeHtml(t.purpose) : ''}</small></div>
       <div class="imp-right">${right}</div>
     </div>`;
   }).join('');
   return `
-    <div class="section-label">Alle Eingänge (${total}${unassigned ? ` · ${unassigned} offen` : ''})</div>
+    <div class="section-label">Alle Eingänge (${total}${unassigned ? ` · ${unassigned} offen` : ''}) · Tippen für Details</div>
     <div class="card">
       <div class="search-wrap">${ICO.search}
         <input id="txnSearch" type="search" placeholder="Name, Zweck, Betrag, Datum…" value="${escapeHtml(txnQuery)}" oninput="setTxnQuery(this.value)" autocomplete="off"></div>
       <div class="cat-chips" style="margin-top:10px">
         ${chip('all', 'Alle', total)}
         ${chip('unassigned', 'Nicht zugeordnet', unassigned)}
-        ${chip('assigned', 'Zugeordnet', total - unassigned)}
+        ${chip('assigned', 'Zugeordnet', total - unassigned - ignored)}
+        ${chip('ignored', 'Nicht nötig', ignored)}
       </div>
     </div>
     <div class="imp-list">
@@ -269,7 +276,8 @@ function isBooked(personId, txnId) {
 }
 
 function resultsHtml() {
-  const { assignments, unmatched } = result;
+  const { assignments } = result;
+  const unmatched = result.unmatched.filter((t) => !(state.transactions && state.transactions[t.id] && state.transactions[t.id].ignored));
   const byPerson = new Map(assignments.map((a) => [a.personId, a]));
 
   // Personen mit Soll in diesem Monat + alle mit Zuordnung.
@@ -842,6 +850,71 @@ export function saveRefund() {
   if (rs.txnId && pendingOutgoing().length) setTimeout(openRefundQuestions, 0);
 }
 
+// ---- Detailansicht eines gespeicherten Eingangs ---------------------------
+function txnDetailHtml(t) {
+  const tgt = assignedMap()[t.id];
+  const row = (k, v) => v ? `<div class="cost-row static" style="align-items:flex-start;gap:12px"><span>${k}</span><b style="text-align:right;word-break:break-word">${v}</b></div>` : '';
+  let status, actions;
+  if (tgt) {
+    status = `<span style="color:#2fb86b">Zugeordnet</span>`;
+    actions = `<p class="muted small" style="margin:0 0 8px">Gebucht bei:</p>
+      ${tgt.map((x) => `<button class="pick-row" onclick="openLedgerCell('${x.personId}','${x.month}')">${escapeHtml(personName(x.personId))}<span class="muted small">${escapeHtml(monthLabel(x.month))} ›</span></button>`).join('')}
+      <p class="muted small" style="margin:8px 0 0">Ändern oder lösen über die jeweilige Zelle im Soll/Ist.</p>`;
+  } else if (t.ignored) {
+    status = `<span style="color:var(--tx3)">Muss nicht zugeordnet werden</span>`;
+    actions = `<div class="modal-actions">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()">Schließen</button>
+        <button type="button" class="btn btn-primary" onclick="unignoreTxn('${t.id}')">↺ Rückgängig (wieder offen)</button>
+      </div>`;
+  } else {
+    status = `<span style="color:var(--warn)">Nicht zugeordnet</span>`;
+    actions = `<div class="modal-actions" style="flex-wrap:wrap">
+        <button type="button" class="btn btn-primary" onclick="assignStored('${t.id}')">Zuordnen</button>
+        <button type="button" class="btn btn-ghost" onclick="splitStored('${t.id}')">Aufteilen</button>
+      </div>
+      <div class="card" style="margin-top:12px;padding:10px 12px">
+        <label class="fld"><span>Grund (optional)</span><input id="ignoreNote" type="text" list="ignoreNoteList" placeholder="z. B. Privat, Gehalt, Umbuchung"></label>
+        <datalist id="ignoreNoteList">${[...new Set(['Privat', 'Gehalt', 'Umbuchung', 'Erstattung', ...Object.values(state.transactions || {}).map((x) => x.ignoreNote).filter(Boolean)])].map((n) => `<option value="${escapeHtml(n)}"></option>`).join('')}</datalist>
+        <button type="button" class="btn btn-ghost full" style="margin-top:8px" onclick="ignoreTxn('${t.id}')">Muss nicht zugeordnet werden</button>
+        <p class="muted small" style="margin:6px 0 0">Verschiebt den Eingang nach „Nicht nötig“ – jederzeit rückgängig machbar.</p>
+      </div>`;
+  }
+  return `
+    <div style="font-size:26px;font-weight:800;margin:0 0 10px">${fmtEUR(t.amount)}</div>
+    ${row('Status', status)}
+    ${row('Datum', escapeHtml(fmtDate(t.date)))}
+    ${row('Von', escapeHtml(t.name || '—'))}
+    ${row('IBAN', escapeHtml(t.iban || ''))}
+    ${row('Verwendungszweck', escapeHtml(t.purpose || ''))}
+    ${t.ignored && t.ignoreNote && !tgt ? row('Grund', escapeHtml(t.ignoreNote)) : ''}
+    <div style="margin-top:14px">${actions}</div>`;
+}
+export function openTxnDetail(id) {
+  const t = findAnyTxn(id);
+  if (!t) return;
+  openModal('Eingang', txnDetailHtml(t));
+}
+export function ignoreTxn(id) {
+  const t = state.transactions && state.transactions[id];
+  if (!t) return;
+  const el = document.getElementById('ignoreNote');
+  t.ignored = true;
+  t.ignoreNote = el ? el.value.trim() : '';
+  save();
+  closeModal();
+  afterChange();
+  toast('Als „nicht nötig" markiert', 'ok');
+}
+export function unignoreTxn(id) {
+  const t = state.transactions && state.transactions[id];
+  if (!t) return;
+  delete t.ignored; delete t.ignoreNote;
+  save();
+  updateModalBody(txnDetailHtml(t));
+  afterChange();
+  toast('Wieder offen');
+}
+
 function afterChange() {
   renderImport();
   rerenderDashboard();
@@ -854,5 +927,6 @@ Object.assign(window, {
   openManualPayment, saveManualPayment, declareIncome, saveIncome,
   splitUnmatched, addSplitRow, removeSplitRow, saveSplit,
   setTxnQuery, setTxnFilter, assignStored, assignStoredTo, splitStored,
+  openTxnDetail, ignoreTxn, unignoreTxn,
   openRefund, addRefundRow, removeRefundRow, saveRefund, ignoreOutgoing, undoRefund, openRefundQuestions
 });
