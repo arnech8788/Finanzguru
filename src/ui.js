@@ -19,7 +19,8 @@ export function highlight(escapedText, query) {
 }
 
 let toastTimer = null;
-export function toast(msg, type = '') {
+// action = { label, onClick } -> Button im Toast (z. B. „Rückgängig"), länger sichtbar.
+export function toast(msg, type = '', action = null) {
   let el = document.getElementById('toast');
   if (!el) {
     el = document.createElement('div');
@@ -27,9 +28,16 @@ export function toast(msg, type = '') {
     document.body.appendChild(el);
   }
   el.textContent = msg;
-  el.className = 'toast show' + (type ? ' toast-' + type : '');
+  if (action && action.label) {
+    const b = document.createElement('button');
+    b.className = 'toast-action';
+    b.textContent = action.label;
+    b.onclick = () => { el.className = 'toast'; clearTimeout(toastTimer); action.onClick && action.onClick(); };
+    el.appendChild(b);
+  }
+  el.className = 'toast show' + (type ? ' toast-' + type : '') + (action ? ' toast-has-action' : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.className = 'toast'; }, 2800);
+  toastTimer = setTimeout(() => { el.className = 'toast'; }, action ? 5000 : 2800);
 }
 
 // Generisches Modal. content = HTML-String. Gibt das Modal-Element zurück.
