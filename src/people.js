@@ -5,7 +5,8 @@ import { fmtEUR, parseEUR, fmtDate, currentMonth, monthLabel, shiftMonth } from 
 import { PAYMENT_METHODS, paymentMethodLabel } from './data/paymentMethods.js';
 import { SCHEDULES, scheduleLabel, expectedForMonth, monthlyAmount } from './data/schedules.js';
 import { CARD_TYPES, cardTypeLabel, SIM_KINDS, simKindLabel } from './data/cardTypes.js';
-import { statusFor, STATUS, renderLedger, prepaidStats } from './ledger.js';
+import { statusFor, STATUS, renderLedger, prepaidStats, getReceived, partsFor, txnIdsOf, effectiveExpected } from './ledger.js';
+import { matchesPersonTxn } from './match.js';
 import { personReminders } from './remind.js';
 
 let filter = { query: '' };
@@ -82,7 +83,78 @@ function emptyPeople() {
 export function openPerson(id) {
   const p = state.people.find((x) => x.id === id);
   if (!p) return;
-  openModal(p.name || 'Person', personViewHtml(p));
+  window.__personPayView = '';
+  openModal(p.name || 'Person', personViewHtml(p), { onClose: () => { window.__personPayView = ''; } });
+}
+
+// ---- Alle Zahlungen einer Person -----------------------------------------
+let payShowAll = false;
+export function openPersonPayments(id) {
+  const p = state.people.find((x) => x.id === id);
+  if (!p) return;
+  openModal(`Zahlungen · ${p.name || 'Person'}`, paymentsHtml(p), { onClose: () => { window.__personPayView = ''; } });
+  window.__personPayView = id; // erst nach openModal (onClose des Vorgängers setzt zurück)
+}
+export function togglePayAll(id) {
+  payShowAll = !payShowAll;
+  const p = state.people.find((x) => x.id === id);
+  if (p) updateModalBody(paymentsHtml(p));
+}
+function txnLine(t, amount, right) {
+  return `<div class="imp-row imp-click" style="margin-top:6px" onclick="openTxnDetail('${t.id}')">
+    <div class="dash-meta"><b>${fmtEUR(amount)}${Math.abs(amount - (Number(t.amount) || 0)) > 0.005 ? ` <span class="muted small">von ${fmtEUR(t.amount)}</span>` : ''}</b>
+      <small>${escapeHtml(fmtDate(t.date))} · ${escapeHtml(t.name || '—')}${t.purpose ? ' · ' + escapeHtml(t.purpose) : ''}</small></div>
+    <div class="imp-right">${right}</div>
+  </div>`;
+}
+function paymentsHtml(p) {
+  const store = state.transactions || {};
+  const months = Object.keys(state.ledger[p.id] || {}).sort().reverse();
+  let total = 0;
+  const blocks = months.map((m) => {
+    const e = getReceived(p.id, m) || {};
+    const rec = Number(e.received) || 0;
+    total += rec;
+    const parts = partsFor(p.id, m);
+    const refunds = e.refunds || [];
+    const partSum = parts.reduce((a, x) => a + (Number(x.amount) || 0), 0);
+    const refSum = refunds.reduce((a, x) => a + (Number(x.amount) || 0), 0);
+    const manual = Math.round((rec + refSum - partSum) * 100) / 100;
+    if (!parts.length && !refunds.length && Math.abs(manual) < 0.005 && !e.covered && !e.note) return '';
+    const st = statusFor(p, m);
+    const exp = effectiveExpected(p, m);
+    const lines = parts.map((x) => {
+      const t = store[x.txnId];
+      return t ? txnLine(t, Number(x.amount) || 0, `<button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();unlinkStored('${t.id}','${p.id}','${m}')">Lösen</button>`)
+        : `<div class="imp-row" style="margin-top:6px"><div class="dash-meta"><b>${fmtEUR(x.amount)}</b><small>Überweisung (Details nicht gespeichert)</small></div></div>`;
+    }).join('')
+      + (Math.abs(manual) >= 0.005 ? `<div class="imp-row" style="margin-top:6px"><div class="dash-meta"><b>${fmtEUR(manual)}</b><small>manuell eingetragen${e.receivedDate ? ' · ' + escapeHtml(fmtDate(e.receivedDate)) : ''}${e.note ? ' · ' + escapeHtml(e.note) : ''}</small></div></div>` : '')
+      + refunds.map((r) => `<div class="imp-row" style="margin-top:6px;--sc:#8e6bd8"><div class="dash-meta"><b>−${fmtEUR(r.amount)}</b><small>↩ Rückzahlung · ${escapeHtml(fmtDate(r.date) || '—')}${r.note ? ' · ' + escapeHtml(r.note) : ''}</small></div></div>`).join('');
+    return `<div class="pv-block">
+      <div class="cost-row static" style="cursor:pointer" onclick="openLedgerCell('${p.id}','${m}')">
+        <span><b>${escapeHtml(monthLabel(m))}</b> <span class="status-badge" style="--sc:${STATUS[st].color}">${escapeHtml(STATUS[st].label)}</span></span>
+        <b>${fmtEUR(rec)}${exp > 0 ? ` <span class="muted small">/ ${fmtEUR(exp)}</span>` : ''} ›</b></div>
+      ${lines}
+    </div>`;
+  }).filter(Boolean);
+  const shown = payShowAll ? blocks : blocks.slice(0, 12);
+  // Freie Eingänge, die (IBAN/Name) zu dieser Person passen könnten.
+  const used = new Set();
+  for (const ms of Object.values(state.ledger || {})) for (const e of Object.values(ms || {})) txnIdsOf(e).forEach((id) => used.add(id));
+  const free = Object.values(store).filter((t) => !used.has(t.id) && !t.ignored && matchesPersonTxn(p, t))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 20);
+  return `
+    <div class="pv-grid"><div><span class="muted small">Summe erhalten (alle Monate)</span><b>${fmtEUR(total)}</b></div>
+      <div><span class="muted small">Monate mit Buchungen</span><b>${blocks.length}</b></div></div>
+    ${free.length ? `<div class="pv-block"><span class="muted small" style="color:var(--warn)">Nicht zugeordnete Eingänge, die passen könnten (${free.length})</span>
+      ${free.map((t) => txnLine(t, Number(t.amount) || 0, `<button class="btn btn-sm btn-primary" onclick="event.stopPropagation();assignStoredTo('${t.id}','${p.id}',true)">Zuordnen</button>`)).join('')}
+      <p class="muted small" style="margin:6px 0 0">„Zuordnen“ bucht in den Monat des Zahlungsdatums (addiert zu vorhandenen Zahlungen).</p></div>` : ''}
+    ${shown.join('') || '<p class="muted small">Noch keine Zahlungen erfasst.</p>'}
+    ${blocks.length > 12 ? `<button class="btn btn-ghost full" style="margin-top:10px" onclick="togglePayAll('${p.id}')">${payShowAll ? 'Weniger anzeigen' : `Alle ${blocks.length} Monate anzeigen`}</button>` : ''}
+    <p class="muted small" style="margin-top:10px">Tippe einen Monat, um die Zelle zu bearbeiten, oder eine Überweisung für Details. „Lösen“ nimmt eine Überweisung aus dem Monat heraus.</p>
+    <div class="modal-actions" style="margin-top:12px">
+      <button class="btn btn-ghost" onclick="openPerson('${p.id}')">‹ Zurück zur Person</button>
+    </div>`;
 }
 
 function refreshPersonView(id) {
@@ -112,6 +184,7 @@ function personViewHtml(p) {
         <span class="muted small">Karten / SIM (${cards.length})</span>
         ${cards.length ? cards.map(cardView).join('') : '<p class="muted small" style="margin:6px 0 0">Keine Karten hinterlegt.</p>'}
       </div>
+      <button class="btn btn-ghost full" style="margin-top:14px" onclick="openPersonPayments('${p.id}')">${ICO.calendar || ''} Alle Zahlungen anzeigen</button>
       ${learnedSection(p)}
       <div class="modal-actions" style="margin-top:18px">
         <button class="btn btn-danger" onclick="deletePerson('${p.id}')">${ICO.trash} Löschen</button>
@@ -507,7 +580,7 @@ export async function deletePerson(id) {
 export function closePersonModal() { draft = null; closeModal(); }
 
 Object.assign(window, {
-  renderPeople, setPeopleSearch, newPerson, editPerson, openPerson,
+  renderPeople, setPeopleSearch, newPerson, editPerson, openPerson, openPersonPayments, togglePayAll,
   addCard, removeCard, savePerson, deletePerson, closePersonModal,
   removePersonIban, removeNameAlias, removePayAlias, resetLearned, setCardRuntime,
   addAmountChange, removeAmountChange

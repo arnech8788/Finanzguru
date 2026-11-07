@@ -3,7 +3,8 @@ import { registerSW } from 'virtual:pwa-register';
 import { ICO, escapeHtml, openModal, closeModal, isModalOpen, removeModalDOM } from './ui.js';
 import { renderDashboard } from './dashboard.js';
 import { renderPeople } from './people.js';
-import { renderLedger } from './ledger.js';
+import { renderLedger, migrateParts } from './ledger.js';
+import { matchesPersonTxn } from './match.js';
 import { renderImport } from './import.js';
 import { renderCosts } from './costs.js';
 import { renderCategories } from './categories.js';
@@ -60,6 +61,8 @@ export function load() {
   if (!state.outgoing || typeof state.outgoing !== 'object') state.outgoing = {};
   ensureNotifDefaults(state);
   state.schema = 1;
+  // Altbestand: mehrere Überweisungen in einer Zelle nachträglich verknüpfen.
+  try { if (migrateParts(matchesPersonTxn)) save(); } catch (e) { console.warn('migrateParts failed', e); }
 }
 
 // Wird vom Backup-/Bootstrap-Import aufgerufen.
